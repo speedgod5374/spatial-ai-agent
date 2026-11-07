@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Spatial Studio — Room & Furniture Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+    body { font-family: 'Google Sans', 'Inter', sans-serif; background:#f8f9fa; color:#202124; touch-action:manipulation; }
+    .material-card { background:#fff; border:1px solid #dadce0; border-radius:16px; box-shadow:0 1px 2px rgba(60,64,67,.18); }
+    button:disabled { opacity:.55; cursor:wait; }
+    #three-container canvas { display:block; width:100%; height:100%; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-0 sm:p-4">
+  <main id="app-shell" class="w-full max-w-md bg-white sm:rounded-[32px] sm:border-[8px] sm:border-[#202124] shadow-2xl overflow-hidden flex flex-col h-screen sm:h-[850px]">
+    <div class="bg-white px-6 py-3 flex justify-between items-center text-xs text-[#5f6368] border-b border-[#dadce0]">
+      <span>Spatial Studio</span>
+      <div class="flex items-center gap-2"><span id="system-status-text">Ready</span><span id="status-dot" class="w-2 h-2 bg-[#9aa0a6] rounded-full"></span></div>
+    </div>
+
+    <header class="px-6 py-4 bg-white border-b border-[#dadce0] flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-medium tracking-tight">Spatial Studio</h1>
+        <p class="text-xs text-[#5f6368]">AI Room & Furniture Planner</p>
+      </div>
+      <button id="scan-button" class="bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-medium px-4 py-3 rounded-full min-h-[44px] shadow-sm">Scan Room</button>
+    </header>
+
+    <section class="relative w-full h-[300px] bg-[#f1f3f4] overflow-hidden border-b border-[#dadce0]">
+      <div id="three-container" class="absolute inset-0 w-full h-full"></div>
+      <div class="absolute top-3 left-3 z-10">
+        <span id="scan-badge" class="text-[11px] font-medium bg-white/95 text-[#5f6368] border border-[#dadce0] px-3 py-1.5 rounded-full shadow-sm">Waiting for room scan</span>
+      </div>
+      <div id="dimension-tag" class="absolute bottom-3 right-3 text-[11px] text-[#5f6368] bg-white/95 px-3 py-1.5 rounded-full border border-[#dadce0] font-medium shadow-sm z-10">No measured dimensions</div>
+      <div id="viewer-hint" class="absolute bottom-3 left-3 text-[10px] text-[#5f6368] bg-white/90 px-2 py-1 rounded-full z-10">Drag to orbit · Scroll to zoom</div>
+    </section>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fa]">
+      <section class="material-card p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium uppercase tracking-wider text-[#1a73e8]">Spatial Analysis</span>
+          <span id="confidence-label" class="text-[11px] text-[#5f6368] bg-[#f1f3f4] px-2 py-1 rounded">Not scanned</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed]">
+            <span class="text-[#5f6368] block text-[10px] uppercase font-medium">Room data</span>
+            <span id="detected-space-name" class="font-medium text-sm">Awaiting scan</span>
+          </div>
+          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed]">
+            <span class="text-[#5f6368] block text-[10px] uppercase font-medium">Detected objects</span>
+            <span id="object-count" class="font-medium text-sm">0</span>
+          </div>
+        </div>
+        <p id="scan-message" class="text-xs text-[#5f6368] leading-relaxed">Scan a room with the native iOS app, or import a room-data JSON file from a previous scan.</p>
+      </section>
+
+      <section class="material-card p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium uppercase tracking-wider text-[#b06000]">Existing Furniture</span>
+          <span id="anchor-count" class="text-[11px] text-[#5f6368]">0 items</span>
+        </div>
+        <div id="anchor-list" class="space-y-2">
+          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs text-[#5f6368]">Furniture detected by the scan will appear here.</div>
+        </div>
+      </section>
+
+      <section class="material-card p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium uppercase tracking-wider text-[#9334e6]">Furniture Recommendations</span>
+          <span class="text-[11px] text-[#5f6368]">Not connected</span>
+        </div>
+        <p class="text-xs text-[#5f6368] leading-relaxed">Retail matching is not connected yet. The next step is to use measured openings and existing furniture dimensions to filter a real product catalog.</p>
+      </section>
+
+      <section class="flex gap-2">
+        <button id="import-button" class="flex-1 bg-white border border-[#dadce0] text-[#202124] text-xs font-medium px-3 py-3 rounded-full min-h-[44px]">Import scan JSON</button>
+        <button id="export-button" class="flex-1 bg-white border border-[#dadce0] text-[#202124] text-xs font-medium px-3 py-3 rounded-full min-h-[44px]" disabled>Export scan JSON</button>
+        <input id="import-input" type="file" accept=".json,application/json" class="hidden" />
+      </section>
+    </div>
+
+    <nav class="bg-white border-t border-[#dadce0] py-3 px-6 flex justify-around text-xs text-[#5f6368]">
+      <span class="text-[#1a73e8] font-medium py-2">Viewer</span>
+      <span class="py-2">Layout</span>
+      <span class="py-2">Store</span>
+    </nav>
+  </main>
+
+  <div id="notice" class="fixed inset-x-4 bottom-4 z-50 hidden max-w-md mx-auto bg-[#202124] text-white text-sm px-4 py-3 rounded-xl shadow-xl" role="status" aria-live="polite"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
