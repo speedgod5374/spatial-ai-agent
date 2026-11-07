@@ -116,12 +116,10 @@
         </div>
     </div>
 
-    <!-- Full-Screen AR Scanner Overlay (Uncluttered Camera View) -->
+    <!-- Full-Screen AR Scanner Overlay -->
     <div id="ar-scanner-overlay" class="fixed inset-0 bg-black z-50 hidden flex-col justify-between p-6">
-        <!-- Live Video Camera Feed -->
         <video id="ar-video-feed" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
         
-        <!-- Minimalist AR Guide HUD -->
         <div class="relative z-10 flex-1 flex flex-col items-center justify-center pointer-events-none">
             <div class="w-56 h-56 border-2 border-dashed border-white rounded-2xl flex items-center justify-center opacity-80">
                 <div class="w-3 h-3 bg-[#1a73e8] rounded-full animate-ping"></div>
@@ -131,7 +129,6 @@
             </p>
         </div>
 
-        <!-- Floating Action Controls -->
         <div class="relative z-10 flex gap-3 justify-center pb-6">
             <button onclick="cancelARScan()" class="bg-white/90 text-[#202124] font-medium px-6 py-3 rounded-full min-h-[44px] text-xs shadow-lg">
                 Cancel
@@ -161,4 +158,78 @@
             const ambient = new THREE.AmbientLight(0xffffff, 0.9);
             scene.add(ambient);
 
-            const light = new THREE.DirectionalLight(0x1a73e8
+            const light = new THREE.DirectionalLight(0x1a73e8, 1.2);
+            light.position.set(3, 5, 3);
+            scene.app ? scene.add(light) : scene.add(light);
+
+            roomMeshGroup = new THREE.Group();
+            
+            const grid = new THREE.GridHelper(4, 8, 0x1a73e8, 0xdac9c9);
+            grid.position.y = -0.5;
+            roomMeshGroup.add(grid);
+
+            const deskGeo = new THREE.BoxGeometry(1.4, 0.7, 0.8);
+            const deskMat = new THREE.MeshStandardMaterial({ color: 0x1a73e8 });
+            const desk = new THREE.Mesh(deskGeo, deskMat);
+            desk.position.set(0, -0.15, 0);
+            roomMeshGroup.add(desk);
+
+            scene.add(roomMeshGroup);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (roomMeshGroup) roomMeshGroup.rotation.y += 0.003;
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        async function startSpatialScan() {
+            const overlay = document.getElementById('ar-scanner-overlay');
+            const video = document.getElementById('ar-video-feed');
+            
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("Camera access was blocked or is unavailable. Please check your browser permission settings and ensure you are using HTTPS.");
+                cancelARScan();
+            }
+        }
+
+        function cancelARScan() {
+            const overlay = document.getElementById('ar-scanner-overlay');
+            const video = document.getElementById('ar-video-feed');
+            
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+        }
+
+        function confirmARScan() {
+            cancelARScan();
+
+            const scannedMeshGeo = new THREE.BoxGeometry(2.4, 0.1, 2.4);
+            const scannedMeshMat = new THREE.MeshStandardMaterial({ color: 0x137333, wireframe: true });
+            const scannedRoomPlane = new THREE.Mesh(scannedMeshGeo, scannedMeshMat);
+            scannedRoomPlane.position.y = -0.45;
+
+            roomMeshGroup.add(scannedRoomPlane);
+
+            document.getElementById('scan-badge').innerText = "Scanned Boundary Active";
+            document.getElementById('detected-space-name').innerText = "Scanned Room";
+            document.getElementById('confidence-label').innerText = "100% Verified";
+            document.getElementById('dimension-tag').innerText = "Area: 2.4m x 2.4m";
+        }
+
+        window.onload = init3DViewer;
+    </script>
+</body>
+</html>
