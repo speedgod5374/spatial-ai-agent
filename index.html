@@ -82,14 +82,14 @@
       </section>
     </div>
 
-    <nav class="bg-white border-t border-[#dadce0] py-3 px-6 flex justify-around text-xs text-[#5f6368]">
-      <span class="text-[#1a73e8] font-medium py-2">Viewer</span>
-      <span class="py-2">Layout</span>
-      <span class="py-2">Store</span>
+    <nav id="bottom-nav" class="bg-white border-t border-[#dadce0] py-2 px-4 flex justify-around text-xs text-[#5f6368]" aria-label="Main navigation">
+      <button type="button" data-tab="viewer" class="tab-button text-[#1a73e8] font-medium py-2 px-4 rounded-full" aria-current="page">Viewer</button>
+      <button type="button" data-tab="layout" class="tab-button py-2 px-4 rounded-full">Layout</button>
+      <button type="button" data-tab="store" class="tab-button py-2 px-4 rounded-full">Store</button>
     </nav>
   </main>
 
   <div id="notice" class="fixed inset-x-4 bottom-4 z-50 hidden max-w-md mx-auto bg-[#202124] text-white text-sm px-4 py-3 rounded-xl shadow-xl" role="status" aria-live="polite"></div>
-  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
