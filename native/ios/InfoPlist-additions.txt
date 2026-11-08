@@ -1,0 +1,4 @@
+Add this key to the iOS app target's Info.plist:
+
+NSCameraUsageDescription
+Spatial Studio uses the camera for on-device ARKit tracking and room-surface detection. Camera frames are not uploaded by this prototype.
