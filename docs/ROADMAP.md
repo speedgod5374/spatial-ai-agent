@@ -1,115 +1,71 @@
-# Spatial Studio: Product and Engineering Roadmap
+# Spatial Studio: AR Room Scanning MVP
 
 ## Product direction
 
-Spatial Studio should help someone move from an empty room to an editable room plan:
+For now, Spatial Studio has one goal:
 
-1. Create or scan a room.
-2. Identify existing furniture and room features.
-3. Confirm or correct detected objects and measurements.
-4. Try replacement furniture in the 3D room.
-5. Save the project and return to it later.
+**Scan a room with a phone and turn that scan into a simple 3D model of the room.**
 
-The current website is a client-side prototype. Its furniture list and prices are sample data, and its camera button opens a camera preview rather than performing a 3D scan.
+The first version is about room geometry only. It should capture the floor and walls, assemble them into a 3D room shell, and let the user inspect and correct the result.
 
-## Phase 1 — UI and room-planning foundation
+Out of scope for this MVP:
+- Furniture recognition or object detection.
+- Furniture catalogs, shopping, or recommendations.
+- User accounts, cloud databases, or project syncing.
+- AI-based room or furniture analysis.
 
-- Make the workspace responsive on desktop and mobile.
-- Keep Viewer, Layout, and Store navigation consistent.
-- Make room dimensions, selected furniture, and object lists easy to find.
-- Add clear empty, loading, permission-denied, and error states.
-- Keep the 3D editor usable without an account or network connection.
-- Clearly distinguish manually entered dimensions, imported scan data, and measured scan data.
+The existing website is a 3D editor prototype. Its camera preview is not a room scan. A real iPhone AR scan needs native iOS ARKit access; a normal GitHub Pages website running in Safari cannot directly call ARKit.
 
-**Acceptance checks:** the app builds on GitHub Actions; controls remain usable on a phone; room edits and furniture placement work; camera preview is never described as a scan.
+## Device and technology constraints
 
-## Phase 2 — Database and user projects
+The target test device is the **regular iPhone 17**, not an iPhone 17 Pro.
 
-### Recommended starting stack
+- The regular iPhone 17 has no LiDAR scanner.
+- Apple's RoomPlan framework requires a device with a LiDAR scanner. Do not build the MVP around RoomPlan on the regular iPhone 17.
+- A native app can use ARKit world tracking and horizontal/vertical plane detection with the camera and motion sensors.
+- Plane detection finds and tracks flat surfaces; it is not the same as a complete, dense 3D scan of every surface in a room.
+- Tracking and plane estimates can improve as the user moves, and performance depends on lighting and visible visual detail.
 
-Use Supabase (PostgreSQL, Auth, and Storage) as the first backend candidate. It provides a relational database for rooms and products, user authentication, and storage for room images. The static GitHub Pages frontend can connect using the public client key, but every table must have Row Level Security (RLS) policies. Never put a service-role key, database password, or AI-provider secret in browser code.
+Official references:
+- [iPhone 17 technical specifications](https://www.apple.com/iphone-17/specs/)
+- [RoomPlan device support](https://developer.apple.com/documentation/roomplan/roomcapturesession/issupported)
+- [ARKit plane detection](https://developer.apple.com/documentation/arkit/tracking-and-visualizing-planes)
+- [ARKit world tracking](https://developer.apple.com/documentation/arkit/understanding-world-tracking)
 
-Keep database access behind a small data-access layer so the app can change providers without rewriting the room editor.
+## MVP implementation plan
 
-### Initial data model
+### Phase 1 — Native AR scanning foundation
 
-| Table | Purpose | Important fields |
-| --- | --- | --- |
-| profiles | User profile | id (auth user), display_name, created_at |
-| rooms | Saved room projects | id, user_id, name, width_m, length_m, height_m, created_at, updated_at |
-| room_objects | Furniture and detected objects | id, room_id, category, label, width_m, depth_m, height_m, position_x, position_z, rotation_y, source, confidence |
-| products | Furniture catalog | id, brand, name, category, width_m, depth_m, height_m, price, currency, image_path, product_url, active |
-| room_images | User-provided room photos | id, room_id, storage_path, created_at, consent_status |
-| recognition_jobs | Track AI processing | id, room_id, status, model_version, created_at, completed_at, error_code |
+- Keep the existing website as the landing page and 3D model viewer where practical.
+- Add a native iOS scanning app or native iOS component. Choose the smallest maintainable route after inspecting the current project structure.
+- Use ARKit world tracking with horizontal and vertical plane detection.
+- Request camera and motion/world-sensing permissions clearly.
+- Add scan instructions and live tracking feedback. Guide the user to move slowly, cover the room perimeter, and revisit surfaces that have not been detected.
+- Handle unsupported devices, denied permissions, interrupted sessions, and poor tracking.
 
-Use UUID primary keys, foreign keys, timestamps, and constraints for positive dimensions and valid ownership. Store product dimensions in meters and prices with an explicit currency. Avoid storing unnecessary personal information.
+**Acceptance checks:** the scanner starts on a physical regular iPhone 17, clearly reports tracking status, and displays detected floor and wall surfaces. A browser camera preview must never be presented as ARKit scanning.
 
-### Security and privacy requirements
+### Phase 2 — Reconstruct a simple 3D room
 
-- Enable RLS on every user-owned table.
-- A user may read or edit only their own rooms and room objects.
-- Keep public product catalog reads separate from private user project data.
-- Validate uploads and limit file size and accepted formats.
-- Ask permission before uploading room images; explain why images are used and how they can be deleted.
-- Do not expose backend service credentials in the frontend.
-- Add delete-project and delete-account paths before public launch.
+- Collect detected floor and wall plane data during the scan.
+- Convert confirmed plane boundaries into a basic room shell made from a floor and wall surfaces.
+- Let the user confirm or adjust wall boundaries, wall height, and uncertain measurements before finalizing.
+- Clearly distinguish detected values from user-edited or inferred values.
+- Show the completed room in a rotatable 3D preview.
+- Prefer a simple portable model format that can be displayed by the existing Three.js viewer, such as GLB, or a small documented JSON representation if that is more practical initially.
 
-### Build order
+**Accuracy rule:** do not promise exact measurements or a fully complete automatic scan from camera-only plane detection. If a wall, corner, or dimension is uncertain, show that uncertainty and let the user correct it. A simplified room shell is an acceptable first milestone.
 
-1. Create the Supabase project and schema.
-2. Add authentication (start with email sign-in).
-3. Add RLS policies and test cross-user access.
-4. Add save, list, rename, and delete room-project operations.
-5. Persist furniture placements and room dimensions.
-6. Add image storage when the recognition workflow is ready.
+### Phase 3 — Test and improve the scan
 
-## Phase 3 — Furniture recognition
+- Test on the regular iPhone 17 in several real rooms.
+- Check whether floors and walls are detected consistently and whether the reconstructed room closes correctly.
+- Test different lighting conditions, blank walls, clutter, mirrors, and interrupted scans.
+- Measure and document practical dimension error against manually checked room measurements.
+- Improve scan guidance and correction tools based on failed scans.
 
-### Recognition pipeline
+## First milestone
 
-1. **Capture:** user takes or uploads a room photo, or supplies supported scan data.
-2. **Detect:** a vision model finds candidate objects and returns bounding boxes and category labels (sofa, chair, desk, table, bed, lamp).
-3. **Segment:** optionally separate each object from the background to improve its outline.
-4. **Estimate:** estimate dimensions only when there is a trustworthy scale reference or supported AR/depth data. A normal single photo cannot reliably provide exact real-world dimensions by itself.
-5. **Review:** show each candidate with a confidence score and let the user confirm, rename, resize, or remove it.
-6. **Place:** add confirmed objects to the 3D room with a source value such as manual, photo_estimate, or room_scan.
-7. **Improve:** with user permission, collect corrected labels as evaluation examples; do not silently use private room photos as training data.
+A user opens the native scanner on an iPhone 17, walks around a room while the app tracks the camera and detects surfaces, confirms or corrects the detected floor and walls, and receives a basic rotatable 3D model of that room.
 
-### Model strategy
-
-Start with a pretrained object-detection model (for example, a YOLO-family detector) rather than training a custom model from scratch. Evaluate it on a small, consented set of varied room photos. Track per-category precision/recall and false detections. Add segmentation only if bounding boxes are not good enough for the user experience.
-
-Run inference through a backend function or a supported on-device model. A browser-only app must not contain private model/API credentials. Choose server-side versus on-device inference after comparing latency, cost, device support, and privacy.
-
-### Important device limitation
-
-The regular iPhone 17 does not have LiDAR. It can capture photos and use supported AR tracking in a native app, but it cannot use LiDAR-based RoomPlan scanning. The website's camera preview is not a room scan. Exact furniture dimensions and room geometry need a supported scale/depth source or user confirmation.
-
-## Phase 4 — Product matching and recommendations
-
-- Import a licensed or partner-provided furniture catalog with reliable dimensions, images, prices, stock status, and product links.
-- Filter products by category, room clearance, dimensions, and budget before using semantic similarity.
-- Use image/text embeddings only as a ranking aid; retain hard dimension and availability filters.
-- Explain why an item was recommended and show the source and last-updated time for product data.
-- Do not invent live prices or availability.
-
-## Phase 5 — Testing and launch readiness
-
-- Unit-test dimension validation, object placement, and import/export.
-- Test RLS with two separate accounts.
-- Evaluate recognition separately for each furniture category and lighting condition.
-- Test on current desktop browsers and physical iPhones.
-- Add error monitoring, backups, rate limits, and AI usage limits.
-- Launch recognition as an opt-in beta until accuracy and privacy behavior are measured.
-
-## Suggested MVP sequence
-
-**First:** finish the UI and make room projects persist.
-
-**Second:** connect a real furniture catalog with accurate dimensions.
-
-**Third:** add photo-based furniture detection with a user confirmation step.
-
-**Fourth:** investigate native iOS AR features for better room geometry. Treat LiDAR-only features as unavailable on the regular iPhone 17.
-
-This order gives Spatial Studio useful value before the more expensive and less predictable AI and scanning work.
+Do not add databases, accounts, AI furniture recognition, furniture catalogs, or shopping features until this room-scanning milestone works reliably.
