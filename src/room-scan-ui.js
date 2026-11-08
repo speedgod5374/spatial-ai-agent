@@ -246,8 +246,9 @@ function resizeRenderer() {
 
 function clearModel() {
   while (modelGroup?.children.length) {
-    const child = modelGroup.children.pop();
-    child.traverse?.(object => {
+    const child = modelGroup.children[0];
+    modelGroup.remove(child);
+    child.traverse(object => {
       object.geometry?.dispose?.();
       if (Array.isArray(object.material)) object.material.forEach(material => material.dispose());
       else object.material?.dispose?.();
