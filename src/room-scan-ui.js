@@ -16,7 +16,7 @@ if (!viewer) throw new Error("Spatial Studio viewer is unavailable.");
 
 const panel = document.createElement("section");
 panel.id = "room-scan-workspace";
-panel.className = "material-card p-4 space-y-4";
+panel.className = "material-card col-span-full p-4 space-y-4";
 panel.innerHTML = `
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
