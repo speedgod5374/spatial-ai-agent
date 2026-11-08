@@ -89,6 +89,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private let statusLabel = UILabel()
     private let countLabel = UILabel()
     private var observedPlanes: [UUID: ARPlaneAnchor] = [:]
+    private let planesLock = NSLock()
     private var hasStarted = false
     private var hasFinished = false
     private var trackingDescription = "Tracking: initializing"
@@ -257,14 +258,18 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
     func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
         guard let plane = anchor as? ARPlaneAnchor else { return }
+        planesLock.lock()
         observedPlanes[plane.identifier] = plane
+        planesLock.unlock()
         addPlaneVisualization(for: plane, to: node)
         updateCounts()
     }
 
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
         guard let plane = anchor as? ARPlaneAnchor else { return }
+        planesLock.lock()
         observedPlanes[plane.identifier] = plane
+        planesLock.unlock()
         node.childNodes.filter { $0.name == "detected-plane-overlay" }.forEach { $0.removeFromParentNode() }
         addPlaneVisualization(for: plane, to: node)
         updateCounts()
@@ -288,8 +293,11 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     private func updateCounts() {
-        let horizontal = observedPlanes.values.filter { $0.alignment == .horizontal }.count
-        let vertical = observedPlanes.values.filter { $0.alignment == .vertical }.count
+        planesLock.lock()
+        let snapshot = Array(observedPlanes.values)
+        planesLock.unlock()
+        let horizontal = snapshot.filter { $0.alignment == .horizontal }.count
+        let vertical = snapshot.filter { $0.alignment == .vertical }.count
         DispatchQueue.main.async {
             self.countLabel.text = "Horizontal surfaces: \(horizontal) · Vertical surfaces: \(vertical)"
         }
@@ -331,7 +339,9 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         configuration.planeDetection = [.horizontal, .vertical]
         configuration.worldAlignment = .gravity
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        planesLock.lock()
         observedPlanes.removeAll()
+        planesLock.unlock()
         updateCounts()
     }
 
@@ -340,7 +350,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     private func serializedPlanes() -> [[String: Any]] {
-        observedPlanes.values
+        planesLock.lock()
+        let snapshot = Array(observedPlanes.values)
+        planesLock.unlock()
+        return snapshot
             .sorted { $0.identifier.uuidString < $1.identifier.uuidString }
             .map { plane in
                 let transform = plane.transform
