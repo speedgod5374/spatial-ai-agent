@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { scanRoomWithARKit } from './native-scanner.js';
 
 const $ = (id) => document.getElementById(id);
 const notice = (message) => {
@@ -330,28 +331,44 @@ renderer.domElement.addEventListener('pointerup', stopDrag);
 renderer.domElement.addEventListener('pointercancel', stopDrag);
 
 $('scan-button').addEventListener('click', async () => {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    notice('Camera access is unavailable in this browser. Open the HTTPS site in Safari.');
-    return;
-  }
+  $('scan-button').disabled = true;
+  $('system-status-text').textContent = 'Starting ARKit…';
+  $('scan-message').textContent = 'Move slowly around the room and point the camera toward the floor and walls.';
   try {
-    state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-    let overlay = $('camera-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'camera-overlay';
-      overlay.className = 'fixed inset-0 z-50 bg-black flex flex-col';
-      overlay.innerHTML = '<video id="camera-video" autoplay playsinline class="w-full h-full object-cover"></video><div class="absolute top-4 left-4 right-4 flex justify-between items-center"><span class="bg-black/60 text-white text-xs px-3 py-2 rounded-full">Camera preview · not a 3D scan</span><button id="close-camera" class="bg-white text-black px-4 py-2 rounded-full text-xs">Close</button></div>';
-      document.body.appendChild(overlay);
-      $('close-camera').addEventListener('click', closeCamera);
+    const result = await scanRoomWithARKit();
+    const summary = result.summary || {};
+    const floorWidth = Number(summary.floorWidth) || 0;
+    const floorLength = Number(summary.floorLength) || 0;
+    const wallHeight = Number(summary.estimatedWallHeight) || 0;
+
+    if (floorWidth > 0.5 && floorLength > 0.5) {
+      state.room = {
+        width: Math.min(30, Math.max(1, floorWidth)),
+        length: Math.min(30, Math.max(1, floorLength)),
+        height: wallHeight > 1.5 ? Math.min(8, Math.max(1.8, wallHeight)) : 2.8
+      };
+      buildRoom();
+      $('detected-space-name').textContent = 'ARKit plane estimate';
+      $('confidence-label').textContent = 'Review measurements';
+      $('scan-message').textContent = summary.measurementNote || 'A basic room preview was created from the largest detected floor plane. Review and correct its dimensions.';
+      $('export-button').disabled = false;
+      notice('Surface scan complete. Review the estimated room dimensions.');
+    } else {
+      $('scan-message').textContent = 'ARKit detected surfaces, but not a usable floor footprint. Try scanning again and include more of the floor.';
+      notice('Not enough floor information to create a room preview yet.');
     }
-    $('camera-video').srcObject = state.cameraStream;
-    $('system-status-text').textContent = 'Camera active';
+    $('object-count').textContent = '0';
+    setTab('viewer');
   } catch (error) {
-    const messages = { NotAllowedError: 'Camera permission was denied. Allow camera access for this website in Safari settings.', NotFoundError: 'No camera was found on this device.', NotReadableError: 'The camera is already being used by another app.' };
-    notice(messages[error.name] || 'Could not open the camera. Check Safari permissions and try again.');
+    const message = error?.message || 'The AR scan could not be completed.';
+    $('scan-message').textContent = message;
+    notice(message);
+  } finally {
+    $('scan-button').disabled = false;
+    $('system-status-text').textContent = 'Ready';
   }
 });
+
 function closeCamera() {
   state.cameraStream?.getTracks().forEach(track => track.stop());
   state.cameraStream = null;
