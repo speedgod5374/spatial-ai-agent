@@ -167,13 +167,16 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     private func addPlaneVisualization(for plane: ARPlaneAnchor, to node: SCNNode) {
+        let isHorizontal = plane.alignment == .horizontal
         let width = CGFloat(plane.extent.x)
-        let height = CGFloat(plane.extent.z)
+        let height = CGFloat(isHorizontal ? plane.extent.z : plane.extent.y)
         let geometry = SCNPlane(width: max(width, 0.02), height: max(height, 0.02))
         geometry.firstMaterial?.diffuse.contents = UIColor.systemTeal.withAlphaComponent(0.28)
         geometry.firstMaterial?.isDoubleSided = true
         let planeNode = SCNNode(geometry: geometry)
-        planeNode.eulerAngles.x = -.pi / 2
+        if isHorizontal {
+            planeNode.eulerAngles.x = -.pi / 2
+        }
         planeNode.position = SCNVector3(plane.center.x, plane.center.y, plane.center.z)
         node.addChildNode(planeNode)
     }
