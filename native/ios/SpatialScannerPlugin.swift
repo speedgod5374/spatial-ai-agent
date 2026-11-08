@@ -387,7 +387,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
     @objc private func finishScan() {
         guard !hasFinished else { return }
-        guard !observedPlanes.isEmpty else {
+        planesLock.lock()
+        let hasDetectedPlanes = !observedPlanes.isEmpty
+        planesLock.unlock()
+        guard hasDetectedPlanes else {
             updateTrackingDescription("No surfaces detected yet · Scan the floor and walls before finishing.")
             return
         }
