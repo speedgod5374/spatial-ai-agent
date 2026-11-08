@@ -13,6 +13,49 @@
     button:disabled { opacity:.55; cursor:wait; }
     #three-container canvas { display:block; width:100%; height:100%; }
   </style>
+
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#e4e9f1; --blue:#315efb; --surface:#ffffff; --canvas:#f3f6fb; }
+    body { background:radial-gradient(circle at 12% 0%,#e6edff 0,transparent 34%),#eef2f8; color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+    #app-shell { max-width:1180px; height:min(920px,calc(100dvh - 32px)); border:1px solid #dbe2ed; border-radius:28px; box-shadow:0 24px 80px rgba(31,48,79,.14); background:#fbfcfe; }
+    #app-shell > .bg-white:first-child { background:#f8faff; padding:10px 28px; }
+    #app-shell header { padding:18px 28px; background:rgba(255,255,255,.94); }
+    #app-shell header h1 { font-size:21px; font-weight:750; letter-spacing:-.04em; color:#172033; }
+    #app-shell header p { margin-top:3px; color:#7b8496; }
+    #scan-button { background:linear-gradient(135deg,#4169ff,#2448d8); border-radius:13px; padding:12px 18px; box-shadow:0 7px 18px rgba(49,94,251,.2); }
+    #scan-button:hover { background:#2448d8; }
+    #three-container { background:radial-gradient(circle at 50% 35%,#fff 0,#edf2f9 72%); }
+    #app-shell > section.relative { height:370px; border-bottom:1px solid var(--line); }
+    #app-shell > .flex-1 { padding:22px 26px; background:#f5f7fb; }
+    .material-card { border:1px solid var(--line); border-radius:18px; box-shadow:0 3px 12px rgba(24,39,75,.035); transition:box-shadow .18s ease,transform .18s ease; }
+    .material-card:hover { box-shadow:0 7px 20px rgba(24,39,75,.07); }
+    .material-card h2,.material-card h3 { color:#202b40; }
+    .tab-panel { min-height:100%; }
+    #tab-viewer:not(.hidden) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:16px; }
+    #tab-viewer > section { min-width:0; }
+    #tab-viewer > section:last-child { grid-column:1 / -1; }
+    #tab-layout:not(.hidden) { max-width:900px; margin:0 auto; }
+    #tab-store:not(.hidden) { max-width:1000px; margin:0 auto; }
+    #tab-store #store-grid { grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); }
+    #bottom-nav { padding:12px 20px max(12px,env(safe-area-inset-bottom)); background:rgba(255,255,255,.96); }
+    .tab-button { min-width:100px; border-radius:12px; transition:background .15s ease,color .15s ease; }
+    .tab-button[aria-current="page"] { background:#edf1ff; color:#315efb; }
+    button { transition:filter .15s ease,transform .15s ease; }
+    button:not(:disabled):active { transform:translateY(1px); }
+    input { border-color:#dce3ed !important; border-radius:10px !important; outline-color:#315efb; }
+    #notice { border-radius:14px; }
+    @media (max-width:700px) {
+      body { display:block; background:#f5f7fb; }
+      #app-shell { max-width:none; width:100%; height:100dvh; min-height:600px; border:0; border-radius:0; box-shadow:none; }
+      #app-shell > section.relative { height:32vh; min-height:230px; max-height:340px; }
+      #app-shell header { padding:14px 18px; }
+      #app-shell > .flex-1 { padding:14px; }
+      #tab-viewer:not(.hidden) { grid-template-columns:1fr; gap:12px; }
+      #tab-viewer > section:last-child { grid-column:auto; }
+      #bottom-nav { padding-bottom:max(12px,env(safe-area-inset-bottom)); }
+      .tab-button { min-width:0; flex:1; }
+    }
+  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-0 sm:p-4">
   <main id="app-shell" class="w-full max-w-md bg-white sm:rounded-[32px] sm:border-[8px] sm:border-[#202124] shadow-2xl overflow-hidden flex flex-col h-screen sm:h-[850px]">
@@ -24,7 +67,7 @@
     <header class="px-6 py-4 bg-white border-b border-[#dadce0] flex items-center justify-between gap-3">
       <div>
         <h1 class="text-lg font-medium tracking-tight">Spatial Studio</h1>
-        <p class="text-xs text-[#5f6368]">AI Room & Furniture Planner</p>
+        <p class="text-xs text-[#5f6368]">Room planning, made visual</p>
       </div>
       <button id="scan-button" class="bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-medium px-4 py-3 rounded-full min-h-[44px] shadow-sm">Scan Room</button>
     </header>
@@ -32,9 +75,9 @@
     <section class="relative w-full h-[300px] bg-[#f1f3f4] overflow-hidden border-b border-[#dadce0]">
       <div id="three-container" class="absolute inset-0 w-full h-full"></div>
       <div class="absolute top-3 left-3 z-10">
-        <span id="scan-badge" class="text-[11px] font-medium bg-white/95 text-[#5f6368] border border-[#dadce0] px-3 py-1.5 rounded-full shadow-sm">Waiting for room scan</span>
+        <span id="scan-badge" class="text-[11px] font-medium bg-white/95 text-[#5f6368] border border-[#dadce0] px-3 py-1.5 rounded-full shadow-sm">3D workspace</span>
       </div>
-      <div id="dimension-tag" class="absolute bottom-3 right-3 text-[11px] text-[#5f6368] bg-white/95 px-3 py-1.5 rounded-full border border-[#dadce0] font-medium shadow-sm z-10">No measured dimensions</div>
+      <div id="dimension-tag" class="absolute bottom-3 right-3 text-[11px] text-[#5f6368] bg-white/95 px-3 py-1.5 rounded-full border border-[#dadce0] font-medium shadow-sm z-10">Editable room model</div>
       <div id="viewer-hint" class="absolute bottom-3 left-3 text-[10px] text-[#5f6368] bg-white/90 px-2 py-1 rounded-full z-10">Drag to orbit · Scroll to zoom</div>
     </section>
 
