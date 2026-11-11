@@ -98,5 +98,5 @@ test("exports only included and user-confirmed surfaces into the model", () => {
   const exported = createRoomModelExport({ surfaces, capturedAt: "2026-11-08T09:00:00.000Z" });
   assert.equal(exported.observations.length, 4);
   assert.deepEqual(exported.model.surfaces.map(surface => surface.id), ["a"]);
-  assert.match(exported.accuracyNote, /not a complete room reconstruction/i);
+  assert.match(exported.accuracyNote, /not a reconstructed room mesh/i);
 });
