@@ -11,6 +11,9 @@ Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS app for ca
 - Lightweight image checks skip very dark candidate frames and flag low-detail views for review.
 - Eight relative horizontal heading buckets help report viewpoint variety; they are not a room-coverage score.
 - Optional ARKit horizontal/vertical plane observations, clearly treated as hints rather than a complete room model.
+- Actionable ARKit tracking feedback for initialization, excessive motion, insufficient visual features, and relocalization.
+- Rotation-aware furniture footprints, room-boundary clamping, collision checks, and automatic nearest-clear placement in the planning model.
+- Imported furniture is arranged into available positions instead of stacking every object at the room origin.
 - Review screen with captured-view thumbnails.
 - ZIP export containing the captured images and `capture.json` for a reconstruction pipeline.
 - JSON export for manually confirmed ARKit plane hints.
