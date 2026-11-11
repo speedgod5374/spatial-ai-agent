@@ -384,7 +384,12 @@ renderer.domElement.addEventListener('pointermove', event => {
   const group = furnitureGroup.children.find(g => g.userData.itemId === item.id);
   if (group) group.position.set(position.x, 0, position.z);
 });
-function stopDrag() { dragging = false; controls.enabled = true; }
+function stopDrag() {
+  if (!dragging) return;
+  dragging = false;
+  controls.enabled = true;
+  renderFurnitureList();
+}
 renderer.domElement.addEventListener('pointerup', stopDrag);
 renderer.domElement.addEventListener('pointercancel', stopDrag);
 
