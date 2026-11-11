@@ -291,8 +291,25 @@ function buildPanels() {
       notice('Enter valid room dimensions: width/length 1–30m, height 1.8–8m.');
       return;
     }
-    state.room = { width, length, height };
+    const nextRoom = { width, length, height };
+    const reflowedFurniture = [];
+    for (const item of state.furniture) {
+      const position = findFurniturePlacement(
+        item,
+        nextRoom,
+        reflowedFurniture,
+        { x: item.x, z: item.z }
+      );
+      if (!position) {
+        notice(`The new room dimensions cannot fit all furniture. Remove or resize an item first.`);
+        return;
+      }
+      reflowedFurniture.push({ ...item, ...position });
+    }
+    state.room = nextRoom;
+    state.furniture = reflowedFurniture;
     buildRoom();
+    renderFurniture();
     $('detected-space-name').textContent = 'Manually measured room';
     $('confidence-label').textContent = 'User-entered dimensions';
     $('scan-message').textContent = 'Room geometry was generated from your measurements. It has not been automatically scanned.';
