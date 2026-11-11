@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {
+  clampFurniturePosition,
+  findFurniturePlacement,
+  furnitureOverlaps,
+  getFurnitureFootprint
+} from './layout-geometry.js';
 
 const $ = (id) => document.getElementById(id);
 const notice = (message) => {
@@ -169,11 +175,17 @@ function selectFurniture(id) {
 
 function addFurniture(product) {
   const item = { ...product, id: crypto.randomUUID(), x: 0, z: 0, rotation: 0 };
+  const position = findFurniturePlacement(item, state.room, state.furniture);
+  if (!position) {
+    notice(`${item.name} is too large to fit in this room.`);
+    return;
+  }
+  Object.assign(item, position);
   state.furniture.push(item);
   state.selectedId = item.id;
   renderFurniture();
   setTab('layout');
-  notice(`${item.name} added. Drag it in the 3D viewer to position it.`);
+  notice(`${item.name} placed with clearance from existing furniture.`);
 }
 
 function setTab(tab) {
@@ -269,7 +281,15 @@ function buildPanels() {
   $('rotate-button').addEventListener('click', () => {
     const item = state.furniture.find(x => x.id === state.selectedId);
     if (!item) return;
-    item.rotation = (item.rotation + Math.PI / 12) % (Math.PI * 2);
+    const nextRotation = (item.rotation + Math.PI / 12) % (Math.PI * 2);
+    const rotated = { ...item, rotation: nextRotation };
+    const position = clampFurniturePosition(rotated, item.x, item.z, state.room);
+    if (!position || furnitureOverlaps(rotated, position, state.furniture)) {
+      notice("That rotation would overlap another item or cross the room boundary.");
+      return;
+    }
+    item.rotation = nextRotation;
+    Object.assign(item, position);
     renderFurniture();
   });
   $('remove-button').addEventListener('click', () => {
@@ -319,11 +339,12 @@ renderer.domElement.addEventListener('pointermove', event => {
   if (!raycaster.ray.intersectPlane(floorPlane, dragPoint)) return;
   const item = state.furniture.find(x => x.id === state.selectedId);
   if (!item) return;
-  const x = THREE.MathUtils.clamp(dragPoint.x + dragOffset.x, -state.room.width / 2 + item.w / 2, state.room.width / 2 - item.w / 2);
-  const z = THREE.MathUtils.clamp(dragPoint.z + dragOffset.z, -state.room.length / 2 + item.d / 2, state.room.length / 2 - item.d / 2);
-  item.x = x; item.z = z;
+  const position = clampFurniturePosition(item, dragPoint.x + dragOffset.x, dragPoint.z + dragOffset.z, state.room);
+  if (!position || furnitureOverlaps(item, position, state.furniture)) return;
+  item.x = position.x;
+  item.z = position.z;
   const group = furnitureGroup.children.find(g => g.userData.itemId === item.id);
-  if (group) group.position.set(x, 0, z);
+  if (group) group.position.set(position.x, 0, position.z);
 });
 function stopDrag() { dragging = false; controls.enabled = true; }
 renderer.domElement.addEventListener('pointerup', stopDrag);
@@ -393,7 +414,15 @@ $('import-input').addEventListener('change', async event => {
   event.target.value = '';
 });
 $('export-button').addEventListener('click', () => {
-  const payload = { schemaVersion: 1, source: 'Spatial Studio web planner', room: state.room, furniture: state.furniture };
+  const payload = {
+    schemaVersion: 2,
+    source: 'Spatial Studio web planner',
+    room: state.room,
+    furniture: state.furniture.map(item => ({
+      ...item,
+      footprint: getFurnitureFootprint(item)
+    }))
+  };
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url; a.download = 'spatial-studio-room.json'; a.click();
