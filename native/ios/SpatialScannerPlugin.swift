@@ -1,6 +1,7 @@
 import ARKit
 import AVFoundation
 import Capacitor
+import CoreImage
 import SceneKit
 import UIKit
 
@@ -88,6 +89,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private let sceneView = ARSCNView(frame: .zero)
     private let statusLabel = UILabel()
     private let countLabel = UILabel()
+    private let captureLabel = UILabel()
+    private let imageContext = CIContext()
+    private let frameLock = NSLock()
+    private var capturedFrames: [[String: Any]] = []
+    private var lastCapturedTransform: simd_float4x4?
+    private var lastCaptureTimestamp: TimeInterval = 0
+    private let maximumCapturedFrames = 32
+    private let minimumCaptureInterval: TimeInterval = 0.65
     private var observedPlanes: [UUID: ARPlaneAnchor] = [:]
     private let planesLock = NSLock()
     private var hasStarted = false
@@ -115,6 +124,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         sceneView.translatesAutoresizingMaskIntoConstraints = false
         sceneView.delegate = self
         sceneView.session.delegate = self
+        sceneView.session.delegateQueue = DispatchQueue(label: "com.spatialstudio.room-capture")
         sceneView.automaticallyUpdatesLighting = true
         sceneView.antialiasingMode = .multisampling4X
         view.addSubview(sceneView)
@@ -135,20 +145,20 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
         let titleLabel = UILabel()
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Scan the room"
+        titleLabel.text = "Capture the room from all sides"
         titleLabel.textColor = .white
         titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
 
         let privacyLabel = UILabel()
         privacyLabel.translatesAutoresizingMaskIntoConstraints = false
-        privacyLabel.text = "Camera frames stay on this device. This scan uses ARKit plane detection, not LiDAR."
+        privacyLabel.text = "Selected still frames stay on this device. They are not uploaded automatically."
         privacyLabel.textColor = UIColor.white.withAlphaComponent(0.78)
         privacyLabel.font = .systemFont(ofSize: 12, weight: .regular)
         privacyLabel.numberOfLines = 0
 
         let guidanceLabel = UILabel()
         guidanceLabel.translatesAutoresizingMaskIntoConstraints = false
-        guidanceLabel.text = "Move slowly. Look at the floor first, then each wall. Keep the room well lit and revisit surfaces from another angle."
+        guidanceLabel.text = "Start near the doorway, then slowly walk around the room. Sweep across each wall, include the floor and ceiling, and revisit areas from another angle."
         guidanceLabel.textColor = UIColor.white.withAlphaComponent(0.88)
         guidanceLabel.font = .systemFont(ofSize: 13, weight: .medium)
         guidanceLabel.numberOfLines = 0
@@ -160,9 +170,15 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         statusLabel.numberOfLines = 0
 
         countLabel.translatesAutoresizingMaskIntoConstraints = false
-        countLabel.text = "Horizontal candidates: 0 · Vertical candidates: 0"
-        countLabel.textColor = UIColor.white.withAlphaComponent(0.82)
+        countLabel.text = "Plane hints: 0 horizontal · 0 vertical"
+        countLabel.textColor = UIColor.white.withAlphaComponent(0.76)
         countLabel.font = .systemFont(ofSize: 12, weight: .regular)
+
+        captureLabel.translatesAutoresizingMaskIntoConstraints = false
+        captureLabel.text = "Captured views: 0 / 32 · Move slowly to collect overlapping views."
+        captureLabel.textColor = UIColor(red: 0.30, green: 0.96, blue: 0.88, alpha: 1)
+        captureLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        captureLabel.numberOfLines = 0
 
         let finishButton = makeButton(title: "Finish scan", background: .systemGreen)
         finishButton.addTarget(self, action: #selector(finishScan), for: .touchUpInside)
@@ -175,6 +191,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         topPanel.addSubview(privacyLabel)
         bottomPanel.addSubview(statusLabel)
         bottomPanel.addSubview(countLabel)
+        bottomPanel.addSubview(captureLabel)
         bottomPanel.addSubview(finishButton)
         bottomPanel.addSubview(cancelButton)
 
@@ -208,7 +225,11 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             countLabel.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
             countLabel.trailingAnchor.constraint(equalTo: statusLabel.trailingAnchor),
 
-            finishButton.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 12),
+            captureLabel.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 7),
+            captureLabel.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
+            captureLabel.trailingAnchor.constraint(equalTo: statusLabel.trailingAnchor),
+
+            finishButton.topAnchor.constraint(equalTo: captureLabel.bottomAnchor, constant: 12),
             finishButton.leadingAnchor.constraint(equalTo: countLabel.leadingAnchor),
             finishButton.bottomAnchor.constraint(equalTo: bottomPanel.bottomAnchor, constant: -12),
             finishButton.heightAnchor.constraint(equalToConstant: 44),
@@ -294,8 +315,9 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         let fill = SCNPlane(width: safeWidth, height: safeHeight)
         let fillMaterial = SCNMaterial()
         fillMaterial.lightingModel = .constant
-        fillMaterial.diffuse.contents = UIColor.systemTeal
-        fillMaterial.transparency = 0.28
+        fillMaterial.diffuse.contents = UIColor(red: 0.0, green: 0.84, blue: 1.0, alpha: 1)
+        fillMaterial.emission.contents = UIColor(red: 0.0, green: 0.48, blue: 0.62, alpha: 1)
+        fillMaterial.transparency = 0.52
         fillMaterial.isDoubleSided = true
         fillMaterial.readsFromDepthBuffer = false
         fillMaterial.writesToDepthBuffer = false
@@ -310,12 +332,13 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         // bright floors and walls, even when the translucent fill is subtle.
         let borderMaterial = SCNMaterial()
         borderMaterial.lightingModel = .constant
-        borderMaterial.diffuse.contents = UIColor(red: 0.15, green: 0.95, blue: 0.82, alpha: 1)
+        borderMaterial.diffuse.contents = UIColor(red: 0.0, green: 0.96, blue: 1.0, alpha: 1)
+        borderMaterial.emission.contents = UIColor(red: 0.0, green: 0.72, blue: 0.85, alpha: 1)
         borderMaterial.isDoubleSided = true
         borderMaterial.readsFromDepthBuffer = false
         borderMaterial.writesToDepthBuffer = false
 
-        let thickness: CGFloat = 0.012
+        let thickness: CGFloat = 0.026
         let borderPieces: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [
             (0, safeHeight / 2, safeWidth, thickness),
             (0, -safeHeight / 2, safeWidth, thickness),
@@ -333,14 +356,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         }
 
         // Keep a small camera-facing label attached to the detected patch.
-        let label = SCNText(string: isHorizontal ? "HORIZONTAL PATCH" : "VERTICAL PATCH", extrusionDepth: 0)
+        let label = SCNText(string: isHorizontal ? "HORIZONTAL" : "VERTICAL", extrusionDepth: 0)
         label.font = UIFont.systemFont(ofSize: 8, weight: .bold)
         label.flatness = 0.2
         label.firstMaterial?.lightingModel = .constant
         label.firstMaterial?.diffuse.contents = UIColor.white
         let labelNode = SCNNode(geometry: label)
         labelNode.name = "detected-plane-label"
-        labelNode.scale = SCNVector3(0.008, 0.008, 0.008)
+        labelNode.scale = SCNVector3(0.012, 0.012, 0.012)
         labelNode.position = SCNVector3(-safeWidth / 2, safeHeight / 2 + 0.06, 0.012)
         labelNode.constraints = [SCNBillboardConstraint()]
         labelNode.renderingOrder = 22
@@ -356,7 +379,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         let horizontal = snapshot.filter { $0.alignment == .horizontal }.count
         let vertical = snapshot.filter { $0.alignment == .vertical }.count
         DispatchQueue.main.async {
-            self.countLabel.text = "Horizontal surfaces: \(horizontal) · Vertical surfaces: \(vertical)"
+            self.countLabel.text = "Plane hints: \(horizontal) horizontal · \(vertical) vertical"
         }
     }
 
@@ -367,10 +390,94 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         }
     }
 
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        captureFrameIfUseful(frame)
+    }
+
+    private func captureFrameIfUseful(_ frame: ARFrame) {
+        guard !hasFinished else { return }
+        guard case .normal = frame.camera.trackingState else { return }
+
+        let transform = frame.camera.transform
+        if let previous = lastCapturedTransform {
+            let currentPosition = SIMD3<Float>(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+            let previousPosition = SIMD3<Float>(previous.columns.3.x, previous.columns.3.y, previous.columns.3.z)
+            let travel = simd_distance(currentPosition, previousPosition)
+            let currentForward = simd_normalize(SIMD3<Float>(-transform.columns.2.x, -transform.columns.2.y, -transform.columns.2.z))
+            let previousForward = simd_normalize(SIMD3<Float>(-previous.columns.2.x, -previous.columns.2.y, -previous.columns.2.z))
+            let directionDot = simd_clamp(simd_dot(currentForward, previousForward), -1.0, 1.0)
+            let turnAngle = acos(directionDot)
+            guard frame.timestamp - lastCaptureTimestamp >= minimumCaptureInterval,
+                  travel >= 0.22 || turnAngle >= 0.25 else { return }
+        }
+
+        frameLock.lock()
+        let currentCount = capturedFrames.count
+        frameLock.unlock()
+        guard currentCount < maximumCapturedFrames else { return }
+
+        let pixelBuffer = frame.capturedImage
+        let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let scale = min(CGFloat(1.0), CGFloat(1024.0) / CGFloat(max(sourceWidth, sourceHeight)))
+        let outputWidth = max(1, Int((CGFloat(sourceWidth) * scale).rounded(.down)))
+        let outputHeight = max(1, Int((CGFloat(sourceHeight) * scale).rounded(.down)))
+        let sourceImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let resizedImage = sourceImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let imageRect = CGRect(x: 0, y: 0, width: outputWidth, height: outputHeight)
+        guard let cgImage = imageContext.createCGImage(resizedImage, from: imageRect),
+              let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.62) else {
+            updateTrackingDescription("Image capture failed · Keep scanning; some views may be skipped.")
+            return
+        }
+
+        let intrinsics = frame.camera.intrinsics
+        let frameIndex = currentCount + 1
+        let record: [String: Any] = [
+            "id": String(format: "frame-%03d", frameIndex),
+            "filename": String(format: "frames/frame-%03d.jpg", frameIndex),
+            "imageBase64": jpegData.base64EncodedString(),
+            "timestamp": frame.timestamp,
+            "cameraTransform": serializedMatrix(transform),
+            "intrinsics": [
+                [Double(intrinsics.columns.0.x) * Double(scale), 0.0, Double(intrinsics.columns.2.x) * Double(scale)],
+                [0.0, Double(intrinsics.columns.1.y) * Double(scale), Double(intrinsics.columns.2.y) * Double(scale)],
+                [0.0, 0.0, 1.0]
+            ],
+            "imageWidth": outputWidth,
+            "imageHeight": outputHeight,
+            "originalImageWidth": sourceWidth,
+            "originalImageHeight": sourceHeight,
+            "imageOrientation": "sensor-native",
+            "tracking": "normal"
+        ]
+
+        frameLock.lock()
+        capturedFrames.append(record)
+        let newCount = capturedFrames.count
+        frameLock.unlock()
+        lastCapturedTransform = transform
+        lastCaptureTimestamp = frame.timestamp
+        DispatchQueue.main.async {
+            self.captureLabel.text = newCount >= self.maximumCapturedFrames
+                ? "Captured views: \(newCount) / \(self.maximumCapturedFrames) · Good coverage. You can finish the scan."
+                : "Captured views: \(newCount) / \(self.maximumCapturedFrames) · Keep moving slowly and overlap each view."
+        }
+    }
+
+    private func serializedMatrix(_ transform: simd_float4x4) -> [Double] {
+        [
+            Double(transform.columns.0.x), Double(transform.columns.0.y), Double(transform.columns.0.z), Double(transform.columns.0.w),
+            Double(transform.columns.1.x), Double(transform.columns.1.y), Double(transform.columns.1.z), Double(transform.columns.1.w),
+            Double(transform.columns.2.x), Double(transform.columns.2.y), Double(transform.columns.2.z), Double(transform.columns.2.w),
+            Double(transform.columns.3.x), Double(transform.columns.3.y), Double(transform.columns.3.z), Double(transform.columns.3.w)
+        ]
+    }
+
     func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
         switch camera.trackingState {
         case .normal:
-            updateTrackingDescription("Tracking: normal · Keep moving slowly to reveal more surfaces.")
+            updateTrackingDescription("Tracking ready · Sweep across the room slowly to capture overlapping views.")
         case .notAvailable:
             updateTrackingDescription("Tracking: unavailable · Move to a better lit area and try again.")
         case .limited(let reason):
@@ -395,7 +502,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal, .vertical]
         configuration.worldAlignment = .gravity
-        session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        session.run(configuration, options: [])
         planesLock.lock()
         observedPlanes.removeAll()
         planesLock.unlock()
@@ -444,22 +551,27 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
     @objc private func finishScan() {
         guard !hasFinished else { return }
-        planesLock.lock()
-        let hasDetectedPlanes = !observedPlanes.isEmpty
-        planesLock.unlock()
-        guard hasDetectedPlanes else {
-            updateTrackingDescription("No surfaces detected yet · Scan the floor and walls before finishing.")
+        frameLock.lock()
+        let frames = capturedFrames
+        frameLock.unlock()
+        guard frames.count >= 6 else {
+            updateTrackingDescription("Capture at least 6 different viewpoints before finishing. Walk around the room and turn slowly.")
             return
         }
 
         hasFinished = true
         sceneView.session.pause()
         onComplete?([
-            "schemaVersion": 1,
-            "source": "ARKit world tracking plane detection",
+            "schemaVersion": 2,
+            "source": "ARKit guided multi-view camera capture",
+            "captureMethod": "ARKit world-tracked keyframes",
             "units": "meters",
+            "imageOrientation": "sensor-native",
             "tracking": trackingDescription,
-            "planes": serializedPlanes()
+            "frameCount": frames.count,
+            "frames": frames,
+            "planes": serializedPlanes(),
+            "reconstructionStatus": "pending"
         ])
     }
 
