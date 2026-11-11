@@ -41,7 +41,18 @@ panel.innerHTML = `
         <h3 class="text-sm font-semibold">Review captured viewpoints</h3>
         <p id="scan-summary" class="text-[11px] text-[#7a857d] mt-1"></p>
       </div>
-      <button id="scan-fit-view" type="button" class="border border-[#dce3dc] bg-white rounded-lg px-3 py-2 text-[11px] text-[#526257]">Fit model</button>
+      <div class="flex items-center gap-2">
+        <button id="scan-rescan" type="button" class="border border-[#dce3dc] bg-white rounded-lg px-3 py-2 text-[11px] text-[#526257]">Rescan</button>
+        <button id="scan-fit-view" type="button" class="border border-[#dce3dc] bg-white rounded-lg px-3 py-2 text-[11px] text-[#526257]">Fit model</button>
+      </div>
+    </div>
+    <div class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">Horizontal viewpoint directions</span>
+        <span id="scan-direction-count" class="text-[10px] text-[#647067]">Not available</span>
+      </div>
+      <div id="scan-direction-indicator" class="grid grid-cols-8 gap-1.5" role="img" aria-label="Horizontal viewpoint direction indicators"></div>
+      <p class="text-[10px] text-[#89938b]">These indicators show which headings were sampled from the starting direction. They do not measure full room coverage.</p>
     </div>
     <div class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -237,6 +248,23 @@ function renderCapturedFrames() {
   captureSummary.textContent = frames.length
     ? `${frames.length} viewpoints · ${directionSummary} · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
     : "No camera views were returned by the scanner.";
+
+  const directionIndicator = panel.querySelector("#scan-direction-indicator");
+  const directionCount = panel.querySelector("#scan-direction-count");
+  directionIndicator.replaceChildren();
+  const sampled = new Set(scan?.directionBuckets || []);
+  directionCount.textContent = scan?.captureQuality
+    ? `${sampled.size} of 8 sampled`
+    : "Metrics unavailable";
+  for (let direction = 0; direction < 8; direction += 1) {
+    const cell = document.createElement("span");
+    cell.className = sampled.has(direction)
+      ? "h-2.5 rounded-sm bg-[#477151]"
+      : "h-2.5 rounded-sm bg-[#e8ece7]";
+    cell.title = `Direction ${direction + 1}: ${sampled.has(direction) ? "sampled" : "not sampled"}`;
+    directionIndicator.append(cell);
+  }
+
   frames.slice(0, 12).forEach((frame, index) => {
     if (!frame.imageBase64) return;
     const card = document.createElement("div");
@@ -460,6 +488,7 @@ async function startScan() {
 }
 
 startButton.addEventListener("click", startScan);
+panel.querySelector("#scan-rescan").addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
 exportButton.addEventListener("click", downloadJSON);
 captureExportButton.addEventListener("click", downloadCaptureBundle);
