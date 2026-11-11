@@ -2,9 +2,9 @@
 
 ## MVP goal
 
-Capture camera-based ARKit plane observations on a supported iPhone, let the user review and correct those observations, then export an editable JSON representation of the confirmed floor and wall surfaces.
+Capture overlapping room images on a standard iPhone 17, pair each image with its ARKit camera pose and calibrated intrinsics, and export a reconstruction-ready dataset. ARKit plane observations remain optional geometry hints.
 
-This is deliberately a **surface-based room-shell prototype**, not a full automatic room scan.
+The scanner does **not** generate the final room mesh on the phone. The multi-view images must be processed by a separate 3D reconstruction service. See [Camera-only room capture and reconstruction pipeline](./CAMERA-ONLY-RECONSTRUCTION.md) for the current capture format and recommended backend design.
 
 ## Device and sensor limits
 
@@ -24,11 +24,11 @@ Apple references:
 1. GitHub Pages continues to host the existing Vite/Three.js web planner.
 2. The browser version never pretends its camera preview is an ARKit scan.
 3. A Capacitor iOS wrapper hosts the same web app.
-4. A local Swift Capacitor plugin opens a native ARSCNView, starts ARKit world tracking, and detects horizontal and vertical plane anchors.
-5. The user finishes or cancels the native scan. The plugin returns plane extents, local centers, and anchor transforms in meters.
-6. JavaScript converts the observations to editable surface records and previews the detected patches in Three.js.
-7. The user chooses whether each observation represents a floor, a wall, or something to ignore; edits its dimensions and world-space center; and explicitly confirms it.
-8. JSON export preserves all observations but places only included, confirmed surfaces in the model section.
+4. A local Swift Capacitor plugin opens a native ARSCNView and starts ARKit world tracking.
+5. The plugin automatically selects camera keyframes as the phone moves, downsizes each image to at most 1024 pixels on its longest side, and records the camera transform, intrinsics, image dimensions, and timestamp.
+6. Horizontal and vertical ARKit plane anchors are collected as optional hints; they are not treated as a room mesh.
+7. The plugin returns the JPEG data and metadata to the web app. The review UI displays sample frames and exports a ZIP containing the images plus `capture.json`.
+8. The user can separately review and export optional, manually confirmed plane hints. The actual 3D reconstruction is a later server-side step.
 
 No account, database, remote image upload, furniture recognition, or product service is used by this feature.
 
@@ -68,9 +68,10 @@ Run `npm run cap:add:ios` only once, when the `ios/` platform does not already e
 6. Set the iOS deployment target to a version supported by the installed Capacitor 8 toolchain and ARKit SDK.
 7. Select a physical standard iPhone 17 as the run destination. The app checks `ARWorldTrackingConfiguration.isSupported` at runtime; the simulator is not a substitute for room-scanning tests.
 
-After changing web assets or Swift sources:
+After changing web assets or Swift sources, update the Swift file that is included in the Xcode target, then rebuild the web assets and sync Capacitor:
 
 ```bash
+cp native/ios/SpatialScannerPlugin.swift ios/App/App/SpatialScannerPlugin.swift
 npm run cap:sync:ios
 npm run cap:open:ios
 ```
@@ -83,18 +84,19 @@ Build and run from Xcode, approve camera access, and tap **Scan Room**. Walk slo
 - [ ] First scan requests camera access with the stated purpose.
 - [ ] Denied/restricted camera access produces a clear error and does not crash.
 - [ ] ARKit tracking status changes between normal and limited states as the phone moves.
-- [ ] Horizontal and vertical plane counts update while scanning.
-- [ ] Finish returns observations; Cancel returns to the editor without saving a scan.
-- [ ] The review UI distinguishes horizontal and vertical surfaces.
-- [ ] Users can ignore false detections, edit dimensions and world-space centers, and confirm only surfaces they recognize.
-- [ ] The 3D preview reflects edits and only confirmed/included surfaces appear in the model export.
-- [ ] JSON export opens and contains the raw observations plus the confirmed model surfaces.
+- [ ] The captured-view counter increments as the phone moves and turns, but not on every camera frame.
+- [ ] Tracking-limited states pause keyframe capture until tracking returns to normal.
+- [ ] Finish requires at least six viewpoints; Cancel discards the current scan.
+- [ ] The review UI shows the captured image thumbnails.
+- [ ] The capture ZIP opens and contains the JPEGs plus `capture.json` with poses and intrinsics.
+- [ ] Optional ARKit plane hints remain clearly labeled as hints, not a complete room model.
+- [ ] No camera frames or scan data are uploaded automatically.
 - [ ] No camera frames or scan data are sent to a server.
 
 ## Accuracy and product limitations
 
 - ARKit plane extents are estimates of detected flat patches, not guaranteed full wall or floor boundaries.
-- The prototype does not join adjacent planes into inferred corners or fill unobserved gaps. It visualizes detected surface patches in their AR world positions.
+- The capture prototype does not yet fuse the images into a point cloud or mesh, infer room corners, or generate an editable floor plan. The ZIP is the input for that future reconstruction stage.
 - Wall height and width may describe only the visible portion of a wall.
 - User edits and confirmations are required before export. The app must not advertise centimeter-level accuracy or treat this output as a certified architectural survey.
 - A higher-fidelity automatic room model requires a device with LiDAR and a supported RoomPlan workflow, such as an appropriate iPhone Pro or iPad Pro. The standard iPhone 17 cannot use that LiDAR-dependent RoomPlan path.
