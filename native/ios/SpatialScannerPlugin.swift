@@ -160,7 +160,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         statusLabel.numberOfLines = 0
 
         countLabel.translatesAutoresizingMaskIntoConstraints = false
-        countLabel.text = "Horizontal surfaces: 0 · Vertical surfaces: 0"
+        countLabel.text = "Horizontal candidates: 0 · Vertical candidates: 0"
         countLabel.textColor = UIColor.white.withAlphaComponent(0.82)
         countLabel.font = .systemFont(ofSize: 12, weight: .regular)
 
@@ -279,16 +279,73 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         let isHorizontal = plane.alignment == .horizontal
         let width = CGFloat(plane.extent.x)
         let secondaryExtent = isHorizontal ? CGFloat(plane.extent.z) : CGFloat(plane.extent.y)
-        let geometry = SCNPlane(width: max(width, 0.02), height: max(secondaryExtent, 0.02))
-        geometry.firstMaterial?.diffuse.contents = UIColor.systemTeal.withAlphaComponent(0.3)
-        geometry.firstMaterial?.isDoubleSided = true
+        let safeWidth = max(width, 0.04)
+        let safeHeight = max(secondaryExtent, 0.04)
 
-        let overlay = SCNNode(geometry: geometry)
+        // ARPlaneAnchor geometry is expressed in the anchor's local coordinate space.
+        // A horizontal patch needs a quarter-turn because SCNPlane is created in XY.
+        let overlay = SCNNode()
         overlay.name = "detected-plane-overlay"
         overlay.position = SCNVector3(plane.center.x, plane.center.y, plane.center.z)
         if isHorizontal {
             overlay.eulerAngles.x = -.pi / 2
         }
+
+        let fill = SCNPlane(width: safeWidth, height: safeHeight)
+        let fillMaterial = SCNMaterial()
+        fillMaterial.lightingModel = .constant
+        fillMaterial.diffuse.contents = UIColor.systemTeal
+        fillMaterial.transparency = 0.28
+        fillMaterial.isDoubleSided = true
+        fillMaterial.readsFromDepthBuffer = false
+        fillMaterial.writesToDepthBuffer = false
+        fill.materials = [fillMaterial]
+
+        let fillNode = SCNNode(geometry: fill)
+        fillNode.name = "detected-plane-fill"
+        fillNode.renderingOrder = 20
+        overlay.addChildNode(fillNode)
+
+        // Draw a visible perimeter so the detected patch is recognizable against
+        // bright floors and walls, even when the translucent fill is subtle.
+        let borderMaterial = SCNMaterial()
+        borderMaterial.lightingModel = .constant
+        borderMaterial.diffuse.contents = UIColor(red: 0.15, green: 0.95, blue: 0.82, alpha: 1)
+        borderMaterial.isDoubleSided = true
+        borderMaterial.readsFromDepthBuffer = false
+        borderMaterial.writesToDepthBuffer = false
+
+        let thickness: CGFloat = 0.012
+        let borderPieces: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [
+            (0, safeHeight / 2, safeWidth, thickness),
+            (0, -safeHeight / 2, safeWidth, thickness),
+            (-safeWidth / 2, 0, thickness, safeHeight),
+            (safeWidth / 2, 0, thickness, safeHeight)
+        ]
+        for (index, piece) in borderPieces.enumerated() {
+            let bar = SCNBox(width: piece.2, height: piece.3, length: 0.004, chamferRadius: 0)
+            bar.materials = [borderMaterial]
+            let barNode = SCNNode(geometry: bar)
+            barNode.name = "detected-plane-border-\(index)"
+            barNode.position = SCNVector3(piece.0, piece.1, 0.006)
+            barNode.renderingOrder = 21
+            overlay.addChildNode(barNode)
+        }
+
+        // Keep a small camera-facing label attached to the detected patch.
+        let label = SCNText(string: isHorizontal ? "HORIZONTAL PATCH" : "VERTICAL PATCH", extrusionDepth: 0)
+        label.font = UIFont.systemFont(ofSize: 8, weight: .bold)
+        label.flatness = 0.2
+        label.firstMaterial?.lightingModel = .constant
+        label.firstMaterial?.diffuse.contents = UIColor.white
+        let labelNode = SCNNode(geometry: label)
+        labelNode.name = "detected-plane-label"
+        labelNode.scale = SCNVector3(0.008, 0.008, 0.008)
+        labelNode.position = SCNVector3(-safeWidth / 2, safeHeight / 2 + 0.06, 0.012)
+        labelNode.constraints = [SCNBillboardConstraint()]
+        labelNode.renderingOrder = 22
+        overlay.addChildNode(labelNode)
+
         anchorNode.addChildNode(overlay)
     }
 
