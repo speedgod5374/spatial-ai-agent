@@ -107,15 +107,15 @@ export function createRoomModelExport(scan) {
 
   return {
     schemaVersion: 1,
-    source: "ARKit world tracking plane detection",
+    source: "ARKit plane observations (not a complete room model)",
     deviceCapability: "Camera-based ARKit; no LiDAR or RoomPlan",
     units: "meters",
     capturedAt: scan?.capturedAt || new Date().toISOString(),
     tracking: scan?.tracking || "unknown",
-    accuracyNote: "These are camera-based plane estimates, not a complete room reconstruction or a certified measurement. Confirm and correct every surface before relying on it.",
+    accuracyNote: "These are optional camera-based plane observations, not a reconstructed room mesh, complete floor plan, or certified measurement. Confirm and correct every surface before relying on it.",
     observations: surfaces.map(serialize),
     model: {
-      type: "confirmed-plane-shell",
+      type: "confirmed-plane-hints",
       surfaces: getConfirmedSurfaces(surfaces).map(serialize)
     }
   };
