@@ -67,6 +67,25 @@ test("ignores unknown alignments and unusable plane extents", () => {
   assert.deepEqual(scan.surfaces, []);
 });
 
+test("preserves multi-view frames and raw plane hints for reconstruction", () => {
+  const frame = {
+    id: "frame-001",
+    imageBase64: "aGVsbG8=",
+    filename: "frames/frame-001.jpg",
+    cameraTransform: translatedMatrix,
+    intrinsics: [[500, 0, 480], [0, 500, 320], [0, 0, 1]]
+  };
+  const scan = normalizeScanPayload({
+    frames: [frame],
+    planes: [{ id: "floor-1", alignment: "horizontal", extent: { x: 4, y: 0, z: 3 } }]
+  });
+
+  assert.equal(scan.frameCount, 1);
+  assert.equal(scan.frames[0].imageBase64, "aGVsbG8=");
+  assert.equal(scan.rawPlanes.length, 1);
+  assert.equal(scan.surfaces.length, 1);
+});
+
 test("exports only included and user-confirmed surfaces into the model", () => {
   const surfaces = [
     { id: "a", role: "floor", alignment: "horizontal", width: 4, depth: 3, center: { x: 0, y: 0, z: 0 }, transform: translatedMatrix, included: true, confirmed: true },
