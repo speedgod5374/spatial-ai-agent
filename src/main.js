@@ -145,16 +145,37 @@ function renderFurniture() {
 }
 
 function renderFurnitureList() {
-  const list = $('anchor-list');
-  if (!list) return;
-  if (!state.furniture.length) {
-    list.innerHTML = '<div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs text-[#5f6368]">No furniture placed yet. Add an item from Store.</div>';
-    return;
-  }
-  list.innerHTML = state.furniture.map(item =>
-    `<button type="button" data-select-id="${item.id}" class="w-full text-left bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs flex justify-between gap-2"><span>${item.name}</span><span class="text-[#5f6368]">${item.w} × ${item.d}m</span></button>`
-  ).join('');
-  list.querySelectorAll('[data-select-id]').forEach(btn => btn.addEventListener('click', () => selectFurniture(btn.dataset.selectId)));
+  const lists = [$('anchor-list'), $('layout-list')].filter(Boolean);
+  const count = $('layout-count');
+  if (count) count.textContent = `${state.furniture.length} ${state.furniture.length === 1 ? 'item' : 'items'}`;
+
+  lists.forEach(list => {
+    list.replaceChildren();
+    if (!state.furniture.length) {
+      const empty = document.createElement('div');
+      empty.className = 'bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs text-[#5f6368]';
+      empty.textContent = 'No furniture placed yet. Add an item from Store.';
+      list.append(empty);
+      return;
+    }
+
+    state.furniture.forEach(item => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'w-full text-left bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs flex justify-between items-center gap-3';
+      button.setAttribute('aria-pressed', String(item.id === state.selectedId));
+      button.classList.toggle('border-[#315e4b]', item.id === state.selectedId);
+      const name = document.createElement('span');
+      name.className = 'font-medium text-[#344139]';
+      name.textContent = item.name;
+      const meta = document.createElement('span');
+      meta.className = 'text-right text-[#5f6368] whitespace-nowrap';
+      meta.textContent = `${item.w.toFixed(2)} × ${item.d.toFixed(2)}m · X ${item.x.toFixed(2)}, Z ${item.z.toFixed(2)}`;
+      button.append(name, meta);
+      button.addEventListener('click', () => selectFurniture(item.id));
+      list.append(button);
+    });
+  });
 }
 
 function updateSelection() {
@@ -397,9 +418,26 @@ $('import-input').addEventListener('change', async event => {
     }
     const elements = room.elements || parsed.elements || [];
     const recognized = elements.filter(el => el.kind === 'object' || el.category);
-    state.furniture = recognized.map(el => {
+    state.furniture = [];
+    recognized.forEach(el => {
       const d = el.dimensions || [1, 0.8, 0.8];
-      return { id: crypto.randomUUID(), name: el.category || 'Scanned object', type: 'scanned', w: d[0] || 1, h: d[1] || 0.8, d: d[2] || 0.8, x: 0, z: 0, rotation: 0, color: 0x8c9baa };
+      const item = {
+        id: crypto.randomUUID(),
+        name: el.category || 'Scanned object',
+        type: 'scanned',
+        w: d[0] || 1,
+        h: d[1] || 0.8,
+        d: d[2] || 0.8,
+        x: 0,
+        z: 0,
+        rotation: 0,
+        color: 0x8c9baa
+      };
+      const position = findFurniturePlacement(item, state.room, state.furniture);
+      if (position) {
+        Object.assign(item, position);
+        state.furniture.push(item);
+      }
     });
     state.selectedId = null;
     renderFurniture();
