@@ -124,9 +124,9 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
     private func configureScene() {
         sceneView.translatesAutoresizingMaskIntoConstraints = false
-        sceneView.delegate = self
-        sceneView.session.delegate = self
         sceneView.session.delegateQueue = DispatchQueue(label: "com.spatialstudio.room-capture")
+        sceneView.session.delegate = self
+        sceneView.delegate = self
         sceneView.automaticallyUpdatesLighting = true
         sceneView.antialiasingMode = .multisampling4X
         view.addSubview(sceneView)
