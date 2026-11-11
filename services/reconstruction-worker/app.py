@@ -17,6 +17,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from geometry import (
     arkit_camera_to_world_to_opencv_world_to_camera,
@@ -33,6 +34,7 @@ MIN_FRAMES = int(os.getenv("MIN_FRAMES", "6"))
 PROCESS_RES = int(os.getenv("DA3_PROCESS_RES", "504"))
 API_KEY = os.getenv("RECONSTRUCTION_API_KEY", "")
 MODEL_LOCK = threading.Lock()
+MODEL_LOAD_LOCK = threading.Lock()
 
 Image.MAX_IMAGE_PIXELS = 20_000_000
 
@@ -56,29 +58,52 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 def load_model() -> Any:
     global _model
-    if _model is not None:
-        return _model
+    with MODEL_LOAD_LOCK:
+        if _model is not None:
+            return _model
 
-    if not torch.cuda.is_available():
-        raise HTTPException(
-            status_code=503,
-            detail="A CUDA GPU is required for this reconstruction worker.",
+        if not torch.cuda.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="A CUDA GPU is required for this reconstruction worker.",
+            )
+
+        try:
+            from depth_anything_3.api import DepthAnything3
+
+            device = torch.device("cuda")
+            loaded = DepthAnything3.from_pretrained(MODEL_ID)
+            loaded = loaded.to(device=device)
+            loaded.eval()
+            _model = loaded
+            return _model
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not load {MODEL_ID}: {type(exc).__name__}: {exc}",
+            ) from exc
+
+
+def run_reconstruction(
+    model: Any,
+    image_paths: list[str],
+    extrinsics: np.ndarray,
+    intrinsics: np.ndarray,
+    output_dir: Path,
+) -> None:
+    with MODEL_LOCK:
+        model.inference(
+            image=image_paths,
+            extrinsics=extrinsics,
+            intrinsics=intrinsics,
+            align_to_input_ext_scale=True,
+            ref_view_strategy="saddle_balanced",
+            process_res=PROCESS_RES,
+            export_dir=str(output_dir),
+            export_format="glb",
+            num_max_points=800_000,
+            show_cameras=False,
         )
-
-    try:
-        from depth_anything_3.api import DepthAnything3
-
-        device = torch.device("cuda")
-        loaded = DepthAnything3.from_pretrained(MODEL_ID)
-        loaded = loaded.to(device=device)
-        loaded.eval()
-        _model = loaded
-        return _model
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not load {MODEL_ID}: {type(exc).__name__}: {exc}",
-        ) from exc
 
 
 def safe_zip_name(name: str) -> bool:
@@ -116,6 +141,8 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
             total_size += info.file_size
             if total_size > MAX_UNCOMPRESSED_BYTES:
                 raise HTTPException(status_code=413, detail="The uncompressed capture is too large.")
+            if info.filename in by_name:
+                raise HTTPException(status_code=400, detail="The ZIP contains duplicate filenames.")
             by_name[info.filename] = info
 
         if "capture.json" not in by_name:
@@ -169,7 +196,7 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
                         )
                     target = workdir / f"frame-{frame_number:03d}.jpg"
                     image.save(target, format="JPEG", quality=95, optimize=True)
-            except (UnidentifiedImageError, OSError) as exc:
+            except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
                 raise HTTPException(status_code=400, detail=f"Frame {frame_number} is not a readable image.") from exc
 
             pose_values = frame.get("cameraToWorldARKit") or frame.get("cameraTransform")
@@ -220,20 +247,15 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
         output_dir.mkdir()
         image_paths, extrinsics, intrinsics, manifest = parse_capture_archive(archive_bytes, input_dir)
 
-        model = load_model()
-        with MODEL_LOCK:
-            prediction = model.inference(
-                image=image_paths,
-                extrinsics=extrinsics,
-                intrinsics=intrinsics,
-                align_to_input_ext_scale=True,
-                ref_view_strategy="saddle_balanced",
-                process_res=PROCESS_RES,
-                export_dir=str(output_dir),
-                export_format="glb",
-                num_max_points=800_000,
-                show_cameras=False,
-            )
+        model = await run_in_threadpool(load_model)
+        await run_in_threadpool(
+            run_reconstruction,
+            model,
+            image_paths,
+            extrinsics,
+            intrinsics,
+            output_dir,
+        )
 
         glb_files = sorted(output_dir.rglob("*.glb"), key=lambda path: path.stat().st_size, reverse=True)
         if not glb_files:
