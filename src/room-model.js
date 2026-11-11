@@ -62,12 +62,20 @@ export function normalizeScanPayload(payload, capturedAt = new Date().toISOStrin
     }];
   });
 
+  const frames = Array.isArray(payload.frames)
+    ? payload.frames.filter(frame => frame && typeof frame.imageBase64 === "string" && frame.imageBase64.length > 0)
+    : [];
+
   return {
-    schemaVersion: 1,
-    source: "ARKit world tracking plane detection",
+    schemaVersion: 2,
+    source: String(payload.source || "ARKit guided multi-view camera capture"),
+    captureMethod: String(payload.captureMethod || "ARKit world-tracked keyframes"),
     units: "meters",
     capturedAt,
     tracking: String(payload.tracking || "unknown"),
+    frameCount: frames.length,
+    frames,
+    rawPlanes: Array.isArray(payload.planes) ? payload.planes : [],
     surfaces
   };
 }
