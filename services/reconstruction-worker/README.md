@@ -20,7 +20,7 @@ The default is `depth-anything/DA3-LARGE-1.1`: a multi-view depth and camera-pos
 
 Use a Linux machine with an NVIDIA CUDA GPU. Model inference does not run on the iPhone or in the browser. Install a CUDA-compatible PyTorch, torchvision, and xformers build that match the host's driver and CUDA runtime, following the official PyTorch installation selector.
 
-The upstream Depth Anything 3 project supports Python 3.9–3.13 and lists PyTorch, torchvision, xformers, NumPy below 2, OpenCV, Open3D, Pillow, and other runtime packages. Install it from the official repository:
+The reconstruction worker code uses Python 3.10 or newer (the upstream Depth Anything 3 project supports Python 3.9–3.13) and the upstream project lists PyTorch, torchvision, xformers, NumPy below 2, OpenCV, Open3D, Pillow, and other runtime packages. Install it from the official repository:
 
 ```bash
 python3 -m venv .venv
@@ -32,7 +32,7 @@ python -m pip install -e vendor/Depth-Anything-3
 python -m pip install -r services/reconstruction-worker/requirements.txt
 ```
 
-The first model load downloads the checkpoint from Hugging Face. Ensure the worker has enough disk space for the environment and model weights, and enough GPU memory for multi-view inference.
+The first model load downloads the checkpoint from Hugging Face. Ensure the worker has enough disk space for the environment and model weights, and enough GPU memory for multi-view inference. The model is not yet benchmarked against Spatial Studio captures; an 8 GB GPU may run out of memory with a full 32-frame scan. If that happens, reduce the capture frame limit or use a GPU with more memory after measuring the quality trade-off.
 
 ## Run locally
 
