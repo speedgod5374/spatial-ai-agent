@@ -26,8 +26,10 @@ Apple references:
 3. A Capacitor iOS wrapper hosts the same web app.
 4. A local Swift Capacitor plugin opens a native ARSCNView and starts ARKit world tracking.
 5. The plugin automatically selects camera keyframes as the phone moves, downsizes each image to at most 1024 pixels on its longest side, and records the camera transform, intrinsics, image dimensions, and timestamp.
-6. Horizontal and vertical ARKit plane anchors are collected as optional hints; they are not treated as a room mesh.
-7. The plugin returns the JPEG data and metadata to the web app. The review UI displays sample frames and exports a ZIP containing the images plus `capture.json`.
+6. A lightweight luma sample skips very dark candidate images; a local-gradient heuristic flags low-detail views. These heuristics are capture guidance only, not blur detection or reconstruction confidence.
+7. Accepted views are grouped into eight relative horizontal heading buckets. This reports directional variety only, not room coverage.
+8. Horizontal and vertical ARKit plane anchors are collected as optional hints; they are not treated as a room mesh.
+9. The plugin returns the JPEG data and metadata to the web app. The review UI displays sample frames and exports a ZIP containing the images plus `capture.json`.
 8. The user can separately review and export optional, manually confirmed plane hints. The actual 3D reconstruction is a later server-side step.
 
 No account, database, remote image upload, furniture recognition, or product service is used by this feature.
@@ -85,6 +87,8 @@ Build and run from Xcode, approve camera access, and tap **Scan Room**. Walk slo
 - [ ] Denied/restricted camera access produces a clear error and does not crash.
 - [ ] ARKit tracking status changes between normal and limited states as the phone moves.
 - [ ] The captured-view counter increments as the phone moves and turns, but not on every camera frame.
+- [ ] Very dark candidate views are skipped, and low-detail views are flagged in the review summary.
+- [ ] The direction count changes as the phone turns; it is described as directional variety, not room coverage.
 - [ ] Tracking-limited states pause keyframe capture until tracking returns to normal.
 - [ ] Finish requires at least six viewpoints; Cancel discards the current scan.
 - [ ] The review UI shows the captured image thumbnails.
