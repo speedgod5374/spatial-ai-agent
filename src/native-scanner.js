@@ -28,8 +28,8 @@ export async function scanRoomWithARKit() {
   if (!availability.available) throw new Error(availability.reason);
 
   const result = await SpatialScanner.scanRoom();
-  if (!Array.isArray(result?.planes)) {
-    throw new Error("The native scanner returned an invalid result. Please try again.");
+  if (!Array.isArray(result?.planes) || !Array.isArray(result?.frames) || result.frames.length < 6) {
+    throw new Error("The native scanner did not return enough captured viewpoints. Update the iOS app from the current project branch and scan again.");
   }
   return result;
 }
