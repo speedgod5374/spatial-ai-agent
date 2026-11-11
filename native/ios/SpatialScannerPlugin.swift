@@ -438,6 +438,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             "imageBase64": jpegData.base64EncodedString(),
             "timestamp": frame.timestamp,
             "cameraTransform": serializedMatrix(transform),
+            "cameraToWorldARKit": serializedMatrix(transform),
             "intrinsics": [
                 [Double(intrinsics.columns.0.x) * Double(scale), 0.0, Double(intrinsics.columns.2.x) * Double(scale)],
                 [0.0, Double(intrinsics.columns.1.y) * Double(scale), Double(intrinsics.columns.2.y) * Double(scale)],
