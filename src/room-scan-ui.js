@@ -58,7 +58,7 @@ panel.innerHTML = `
       <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Optional ARKit plane hints (not a 3D room reconstruction)</summary>
     <div class="mt-3 rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
       <div class="px-3 py-2 border-b border-[#e5eae3] flex items-center justify-between">
-        <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">3D surface preview</span>
+        <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">ARKit plane patches · approximate geometry</span>
         <span class="text-[10px] text-[#89938b]">Drag to orbit · pinch/scroll to zoom</span>
       </div>
       <canvas id="scan-model-canvas" class="block w-full h-[300px]"></canvas>
@@ -67,8 +67,8 @@ panel.innerHTML = `
     <div id="scan-surfaces" class="space-y-2 mt-3"></div>
     </details>
     <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-      <p id="scan-export-status" class="text-[10px] text-[#7d897f]">Review each surface before exporting.</p>
-      <button id="scan-export" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export confirmed room JSON</button>
+      <p id="scan-export-status" class="text-[10px] text-[#7d897f]">Optional geometry hints only. These are not a complete room model.</p>
+      <button id="scan-export" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export confirmed plane hints (.json)</button>
     </div>
   </div>
 `;
@@ -404,6 +404,7 @@ function showScan(scanPayload) {
   review.classList.remove("hidden");
   renderCapturedFrames();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
+  panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0);
   if (scan.surfaces.length) {
     renderSurfaceList();
     updateModel(true);
