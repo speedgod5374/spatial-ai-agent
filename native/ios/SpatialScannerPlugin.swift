@@ -402,6 +402,28 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         }
     }
 
+    func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+        switch camera.trackingState {
+        case .normal:
+            updateTrackingDescription("Tracking stable · Move slowly and overlap each new view.")
+        case .notAvailable:
+            updateTrackingDescription("Tracking unavailable · Point the camera toward a well-lit area with visible details.")
+        case .limited(let reason):
+            switch reason {
+            case .initializing:
+                updateTrackingDescription("Starting room tracking · Hold the phone steady and move slowly.")
+            case .excessiveMotion:
+                updateTrackingDescription("Moving too quickly · Slow down so the camera can track the room.")
+            case .insufficientFeatures:
+                updateTrackingDescription("Not enough visual detail · Aim toward corners, furniture edges, and textured surfaces.")
+            case .relocalizing:
+                updateTrackingDescription("Reacquiring room position · Pause briefly and keep the same area in view.")
+            @unknown default:
+                updateTrackingDescription("Tracking is limited · Move slowly and scan a more detailed area.")
+            }
+        }
+    }
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         captureFrameIfUseful(frame)
     }
