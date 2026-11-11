@@ -16,6 +16,10 @@ The native iOS scanner now performs guided, multi-view camera capture:
 
 The capture currently allows up to 32 keyframes. It requires at least 6 before Finish is accepted. These are engineering guardrails for the prototype, not a claim that six images are sufficient to reconstruct every room.
 
+Before saving a candidate keyframe, the scanner samples the camera's luma plane at low resolution. Very dark frames (mean sampled luma below 42 on the 8-bit pixel scale) are skipped. A simple local-gradient score flags low-detail views, but these are retained because plain walls can be part of a real room and the score is only a capture hint. This is not a calibrated blur detector or model-confidence estimate.
+
+Accepted views are also grouped into eight horizontal heading buckets relative to the first accepted view. The review screen reports how many buckets were sampled. This is only directional variety: it does not prove that eight parts of the room, every wall, or the ceiling and floor were captured. Users should visually inspect the thumbnails and deliberately revisit missing areas.
+
 ## Capture bundle format
 
 The export `spatial-studio-capture-bundle.zip` contains:
@@ -55,6 +59,9 @@ Do not assume the first predicted mesh is dimensionally correct. Camera-only mon
 - [ ] Confirm that the capture counter increments only when the camera moves enough to provide a new viewpoint.
 - [ ] Walk a full circle around a room and confirm that images show overlapping views of every wall.
 - [ ] Confirm that camera tracking limitations pause or reduce frame capture rather than recording unreliable poses.
+- [ ] Confirm that very dark candidate views are skipped and that low-detail views are clearly flagged without being presented as reliable geometry.
+- [ ] Confirm that the eight heading buckets are shown as directional variety only, not as a room-coverage percentage.
+- [ ] Compare the sampled luma and local-gradient warnings against real indoor lighting and varied wall/furniture textures; tune thresholds only after physical-device tests.
 - [ ] Finish returns at least 6 frames and the optional ARKit plane hints.
 - [ ] The review screen displays captured image thumbnails.
 - [ ] Export the ZIP and verify that it contains all JPEGs and a valid `capture.json`.
