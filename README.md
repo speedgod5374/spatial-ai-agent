@@ -8,6 +8,8 @@ Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS app for ca
 - Native iOS capture using ARKit world tracking.
 - Automatic selection of overlapping camera keyframes as the user moves around a room.
 - Each captured JPEG is paired with its ARKit camera pose, camera intrinsics, dimensions, and timestamp.
+- Lightweight image checks skip very dark candidate frames and flag low-detail views for review.
+- Eight relative horizontal heading buckets help report viewpoint variety; they are not a room-coverage score.
 - Optional ARKit horizontal/vertical plane observations, clearly treated as hints rather than a complete room model.
 - Review screen with captured-view thumbnails.
 - ZIP export containing the captured images and `capture.json` for a reconstruction pipeline.
@@ -17,7 +19,7 @@ Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS app for ca
 
 The **standard iPhone 17 has no LiDAR scanner**. This project does not use Apple's LiDAR-dependent RoomPlan workflow.
 
-The non-LiDAR path captures overlapping images and ARKit camera poses. It does **not** create a complete 3D room model on the phone. Camera-only reconstruction can struggle with blank walls, reflective surfaces, poor lighting, and tracking drift. Room measurements must be checked and corrected before furniture-fit decisions.
+The non-LiDAR path captures overlapping images and ARKit camera poses. It does **not** create a complete 3D room model on the phone. Camera-only reconstruction can struggle with blank walls, reflective surfaces, poor lighting, and tracking drift. The scanner's brightness and detail checks are simple capture hints, not guarantees of sharpness or reconstruction quality. Its heading buckets measure directional variety, not whether every part of the room was covered. Room measurements must be checked and corrected before furniture-fit decisions.
 
 ## 3D reconstruction prototype
 
