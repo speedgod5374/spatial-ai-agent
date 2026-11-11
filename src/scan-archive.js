@@ -139,6 +139,8 @@ export function buildCaptureArchive(scan) {
     source: scan.source || "ARKit guided multi-view camera capture",
     units: "meters",
     imageOrientation: "sensor-native",
+    cameraCoordinateSystem: "ARKit camera-to-world, column-major 4x4; +X right, +Y up, -Z forward",
+    reconstructionExtrinsicsConvention: "OpenCV world-to-camera 4x4; derive by converting ARKit camera axes before inversion",
     frameCount: frames.length,
     frames: frames.map(({ imageBase64, ...metadata }) => metadata),
     planeHints: Array.isArray(scan.rawPlanes) ? scan.rawPlanes : [],
