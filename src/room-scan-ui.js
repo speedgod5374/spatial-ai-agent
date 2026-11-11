@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createRoomModelExport, getConfirmedSurfaces, normalizeScanPayload } from "./room-model.js";
+import { buildCaptureArchive } from "./scan-archive.js";
 import { isNativeARKitAvailable, scanRoomWithARKit } from "./native-scanner.js";
 
 const originalScanButton = document.getElementById("scan-button");
@@ -20,29 +21,42 @@ panel.className = "material-card col-span-full p-4 space-y-4";
 panel.innerHTML = `
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
-      <div class="text-[11px] uppercase tracking-wider font-semibold text-[#477151]">Room capture · ARKit</div>
-      <h2 class="text-base font-semibold mt-1">Build a room model from detected surfaces</h2>
-      <p class="text-xs text-[#5f6368] leading-relaxed mt-1 max-w-2xl">The iOS app uses camera-based AR tracking to find flat floor and wall candidates. It does not use LiDAR or RoomPlan, and it cannot guarantee a complete room scan.</p>
+      <div class="text-[11px] uppercase tracking-wider font-semibold text-[#477151]">Room capture · camera-based 3D</div>
+      <h2 class="text-base font-semibold mt-1">Guided multi-view room capture</h2>
+      <p class="text-xs text-[#5f6368] leading-relaxed mt-1 max-w-2xl">The iPhone records overlapping camera views with ARKit camera positions and calibration. This creates the input for 3D reconstruction; the image capture itself is not yet a finished room mesh.</p>
     </div>
     <span id="scan-availability" class="text-[10px] rounded-full px-3 py-1.5 bg-[#f1f3f4] text-[#5f6368]">Checking device…</span>
   </div>
   <div class="grid sm:grid-cols-[1fr_auto] gap-3 items-center rounded-xl bg-[#f7f8f6] border border-[#e8ece7] p-3">
     <div class="text-xs text-[#5f6368] leading-relaxed">
-      <strong class="text-[#344139]">Scan guidance:</strong> move slowly, look at the floor first, then each wall. Keep the room well lit and revisit surfaces from more than one angle. Mirrors, glass, and blank surfaces may not track reliably.
-      <div class="mt-1 text-[10px] text-[#89938b]">Privacy: this prototype processes camera frames on-device and does not upload images or scan data.</div>
+      <strong class="text-[#344139]">Scan guidance:</strong> start near the doorway, then slowly walk around the room. Sweep across every wall, include the floor and ceiling, and revisit areas from another angle. Good lighting and visible room details help tracking.
+      <div class="mt-1 text-[10px] text-[#89938b]">Privacy: selected still frames stay on-device and are not uploaded automatically.</div>
     </div>
-    <button id="scan-start" type="button" class="bg-[#214b39] text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px] whitespace-nowrap">Start ARKit scan</button>
+    <button id="scan-start" type="button" class="bg-[#214b39] text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px] whitespace-nowrap">Start room scan</button>
   </div>
   <p id="scan-status" class="text-xs text-[#5f6368]" role="status" aria-live="polite">Checking native scanner availability…</p>
   <div id="scan-review" class="hidden space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 class="text-sm font-semibold">Review detected surfaces</h3>
+        <h3 class="text-sm font-semibold">Review captured viewpoints</h3>
         <p id="scan-summary" class="text-[11px] text-[#7a857d] mt-1"></p>
       </div>
       <button id="scan-fit-view" type="button" class="border border-[#dce3dc] bg-white rounded-lg px-3 py-2 text-[11px] text-[#526257]">Fit model</button>
     </div>
-    <div class="rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
+    <div class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">Camera keyframes</div>
+          <p id="scan-capture-summary" class="text-[11px] text-[#647067] mt-1">No views captured yet.</p>
+        </div>
+        <button id="scan-export-capture" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export capture bundle (.zip)</button>
+      </div>
+      <div id="scan-frame-strip" class="flex gap-2 overflow-x-auto py-1"></div>
+      <p id="scan-capture-export-status" class="text-[10px] text-[#7d897f]">The bundle contains JPEG views, camera poses, and calibration for reconstruction.</p>
+    </div>
+    <details id="scan-plane-details" class="hidden rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
+      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Optional ARKit plane hints (not a 3D room reconstruction)</summary>
+    <div class="mt-3 rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
       <div class="px-3 py-2 border-b border-[#e5eae3] flex items-center justify-between">
         <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">3D surface preview</span>
         <span class="text-[10px] text-[#89938b]">Drag to orbit · pinch/scroll to zoom</span>
@@ -50,7 +64,8 @@ panel.innerHTML = `
       <canvas id="scan-model-canvas" class="block w-full h-[300px]"></canvas>
       <div class="px-3 py-2 border-t border-[#e5eae3] text-[10px] text-[#7f8a81]">Green = confirmed · Amber = not yet confirmed · Only confirmed surfaces are included in the exported model.</div>
     </div>
-    <div id="scan-surfaces" class="space-y-2"></div>
+    <div id="scan-surfaces" class="space-y-2 mt-3"></div>
+    </details>
     <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
       <p id="scan-export-status" class="text-[10px] text-[#7d897f]">Review each surface before exporting.</p>
       <button id="scan-export" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export confirmed room JSON</button>
@@ -65,6 +80,11 @@ const review = panel.querySelector("#scan-review");
 const surfaceList = panel.querySelector("#scan-surfaces");
 const exportButton = panel.querySelector("#scan-export");
 const exportStatus = panel.querySelector("#scan-export-status");
+const captureExportButton = panel.querySelector("#scan-export-capture");
+const captureExportStatus = panel.querySelector("#scan-capture-export-status");
+const captureSummary = panel.querySelector("#scan-capture-summary");
+const frameStrip = panel.querySelector("#scan-frame-strip");
+const planeDetails = panel.querySelector("#scan-plane-details");
 const startButton = panel.querySelector("#scan-start");
 const scanButton = document.getElementById("scan-button");
 
@@ -195,10 +215,32 @@ function renderSurfaceList() {
 
 function updateExportState() {
   const confirmed = scan ? getConfirmedSurfaces(scan.surfaces) : [];
+  const frameCount = scan?.frames?.length || 0;
   exportButton.disabled = confirmed.length === 0;
+  captureExportButton.disabled = frameCount < 1;
   exportStatus.textContent = confirmed.length
-    ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} will be exported. Unconfirmed observations remain in the JSON for review.`
-    : "Confirm at least one surface to create the editable model export.";
+    ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} will be exported as editable plane hints.`
+    : "No confirmed plane hints yet. The capture bundle is the important reconstruction input.";
+  captureExportStatus.textContent = frameCount
+    ? `${frameCount} camera views with ARKit poses and intrinsics are ready. A reconstruction server still needs to process this bundle.`
+    : "The bundle contains JPEG views, camera poses, and calibration for reconstruction.";
+}
+
+function renderCapturedFrames() {
+  frameStrip.replaceChildren();
+  const frames = scan?.frames || [];
+  captureSummary.textContent = frames.length
+    ? `${frames.length} viewpoints captured · images are paired with their camera positions and calibration.`
+    : "No camera views were returned by the scanner.";
+  frames.slice(0, 12).forEach((frame, index) => {
+    if (!frame.imageBase64) return;
+    const image = document.createElement("img");
+    image.src = `data:image/jpeg;base64,${frame.imageBase64}`;
+    image.alt = `Captured room viewpoint ${index + 1}`;
+    image.loading = "lazy";
+    image.className = "h-20 w-28 shrink-0 rounded-lg object-cover border border-[#e5eae3] bg-[#f1f3ef]";
+    frameStrip.append(image);
+  });
 }
 
 function initializeRenderer() {
@@ -316,41 +358,67 @@ function updateModel(fit = false) {
   updateExportState();
 }
 
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function downloadJSON() {
   if (!scan) return;
   const payload = createRoomModelExport(scan);
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "spatial-studio-room-model.json";
-  link.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(blob, "spatial-studio-room-hints.json");
+}
+
+async function downloadCaptureBundle() {
+  if (!scan?.frames?.length) return;
+  captureExportButton.disabled = true;
+  captureExportStatus.textContent = "Packaging captured images and calibration…";
+  try {
+    const blob = buildCaptureArchive(scan);
+    triggerDownload(blob, "spatial-studio-capture-bundle.zip");
+    captureExportStatus.textContent = "Capture bundle created. It is ready to upload when the reconstruction service is connected.";
+  } catch (error) {
+    captureExportStatus.textContent = error instanceof Error ? error.message : "Could not create the capture bundle.";
+  } finally {
+    captureExportButton.disabled = false;
+  }
 }
 
 function showScan(scanPayload) {
   scan = normalizeScanPayload(scanPayload);
-  if (!scan.surfaces.length) {
+  if (!scan.frames.length && !scan.surfaces.length) {
     review.classList.add("hidden");
-    setStatus("ARKit did not return usable floor or wall planes. Try again with slower movement and better lighting.");
+    setStatus("The scanner returned no usable camera views. Try again with slower movement and better lighting.");
     return;
   }
 
   const floors = scan.surfaces.filter(surface => surface.alignment === "horizontal").length;
   const walls = scan.surfaces.filter(surface => surface.alignment === "vertical").length;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.surfaces.length} plane patches detected · ${floors} horizontal · ${walls} vertical. These are observations, not a complete room outline.`;
+    `${scan.frames.length} camera viewpoints captured · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
   review.classList.remove("hidden");
-  renderSurfaceList();
-  updateModel(true);
-  setStatus("Scan finished. Review the detected surfaces, adjust their dimensions and positions, then confirm the ones that belong in your room model.");
+  renderCapturedFrames();
+  planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
+  if (scan.surfaces.length) {
+    renderSurfaceList();
+    updateModel(true);
+  } else {
+    surfaceList.replaceChildren();
+  }
+  updateExportState();
+  setStatus("Camera capture finished. Export the capture bundle to provide the images and camera calibration to a 3D reconstruction service.");
   review.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function startScan() {
   startButton.disabled = true;
   if (scanButton) scanButton.disabled = true;
-  setStatus("Checking ARKit and requesting camera access if needed…");
+  setStatus("Starting the camera and preparing guided multi-view capture…");
   try {
     const result = await scanRoomWithARKit();
     showScan(result);
@@ -366,6 +434,7 @@ async function startScan() {
 startButton.addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
 exportButton.addEventListener("click", downloadJSON);
+captureExportButton.addEventListener("click", downloadCaptureBundle);
 
 async function checkAvailability() {
   const result = await isNativeARKitAvailable();
