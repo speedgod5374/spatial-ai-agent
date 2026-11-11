@@ -107,12 +107,13 @@ def run_reconstruction(
 
 
 def safe_zip_name(name: str) -> bool:
+    parts = name.split("/")
     path = PurePosixPath(name)
     return (
         bool(name)
         and not path.is_absolute()
         and "\\" not in name
-        and all(part not in {"", ".", ".."} for part in path.parts)
+        and all(part not in {"", ".", ".."} for part in parts)
         and not name.startswith("/")
     )
 
@@ -153,6 +154,8 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise HTTPException(status_code=400, detail="capture.json is invalid.") from exc
 
+        if not isinstance(manifest, dict):
+            raise HTTPException(status_code=400, detail="capture.json must contain a JSON object.")
         if manifest.get("format") != "spatial-studio-multiview-capture":
             raise HTTPException(status_code=400, detail="Unsupported capture bundle format.")
 
@@ -168,6 +171,8 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
         intrinsics: list[np.ndarray] = []
 
         for frame_number, frame in enumerate(frame_metadata, start=1):
+            if not isinstance(frame, dict):
+                raise HTTPException(status_code=400, detail=f"Frame {frame_number} metadata must be an object.")
             filename = frame.get("filename")
             if not isinstance(filename, str) or not filename.startswith("frames/") or filename not in by_name:
                 raise HTTPException(status_code=400, detail=f"Image file for frame {frame_number} is missing.")
@@ -187,8 +192,13 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
                     width, height = image.size
                     if width < 160 or height < 160:
                         raise HTTPException(status_code=400, detail=f"Frame {frame_number} is too small.")
-                    declared_width = int(frame.get("imageWidth", width))
-                    declared_height = int(frame.get("imageHeight", height))
+                    if width * height > 20_000_000:
+                        raise HTTPException(status_code=413, detail=f"Frame {frame_number} exceeds the pixel limit.")
+                    try:
+                        declared_width = int(frame.get("imageWidth", width))
+                        declared_height = int(frame.get("imageHeight", height))
+                    except (TypeError, ValueError) as exc:
+                        raise HTTPException(status_code=400, detail=f"Frame {frame_number} has invalid dimensions.") from exc
                     if (declared_width, declared_height) != (width, height):
                         raise HTTPException(
                             status_code=400,
@@ -199,6 +209,8 @@ def parse_capture_archive(archive_bytes: bytes, workdir: Path) -> tuple[list[str
             except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
                 raise HTTPException(status_code=400, detail=f"Frame {frame_number} is not a readable image.") from exc
 
+            if frame.get("imageOrientation", "sensor-native") != "sensor-native":
+                raise HTTPException(status_code=400, detail=f"Frame {frame_number} uses an unsupported image orientation.")
             pose_values = frame.get("cameraToWorldARKit") or frame.get("cameraTransform")
             if not isinstance(pose_values, list) or len(pose_values) != 16:
                 raise HTTPException(status_code=400, detail=f"Frame {frame_number} is missing its ARKit camera pose.")
