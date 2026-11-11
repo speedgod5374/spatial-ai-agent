@@ -231,8 +231,11 @@ function renderCapturedFrames() {
   const frames = scan?.frames || [];
   const darkSkipped = scan?.captureQuality?.darkFramesSkipped || 0;
   const lowDetail = scan?.captureQuality?.lowDetailFramesCaptured || 0;
+  const directionSummary = scan?.captureQuality
+    ? `${scan.directionBuckets.length}/8 horizontal directions sampled`
+    : "direction metrics unavailable";
   captureSummary.textContent = frames.length
-    ? `${frames.length} viewpoints · ${scan?.directionBuckets?.length || 0}/8 horizontal directions sampled · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
+    ? `${frames.length} viewpoints · ${directionSummary} · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
     : "No camera views were returned by the scanner.";
   frames.slice(0, 12).forEach((frame, index) => {
     if (!frame.imageBase64) return;
@@ -404,11 +407,14 @@ function showScan(scanPayload) {
   const directionCount = scan.directionBuckets?.length || 0;
   const darkSkipped = scan.captureQuality?.darkFramesSkipped || 0;
   const lowDetail = scan.captureQuality?.lowDetailFramesCaptured || 0;
+  const directionSummary = scan.captureQuality
+    ? `${directionCount}/8 horizontal view directions sampled (directional variety, not room coverage)`
+    : "direction metrics unavailable";
+  const captureWarning = (darkSkipped || lowDetail)
+    ? `Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas.`
+    : null;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.frames.length} camera viewpoints · ${directionCount}/8 horizontal view directions sampled (directional variety, not room coverage) · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
-  if (darkSkipped || lowDetail) {
-    setStatus(`Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas. The capture bundle is still only input for a separate reconstruction step.`);
-  }
+    `${scan.frames.length} camera viewpoints · ${directionSummary} · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
   review.classList.remove("hidden");
   renderCapturedFrames();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
@@ -420,7 +426,9 @@ function showScan(scanPayload) {
     surfaceList.replaceChildren();
   }
   updateExportState();
-  setStatus("Camera capture finished. Export the capture bundle to provide the images and camera calibration to a 3D reconstruction service.");
+  setStatus(captureWarning
+    ? `${captureWarning} Exporting the bundle only packages the images and calibration; a separate 3D reconstruction service is still required.`
+    : "Camera capture finished. Export the capture bundle to provide the images and camera calibration to a 3D reconstruction service.");
   review.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
