@@ -293,6 +293,13 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
     except HTTPException:
         shutil.rmtree(temp_root, ignore_errors=True)
         raise
+    except torch.cuda.OutOfMemoryError as exc:
+        torch.cuda.empty_cache()
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise HTTPException(
+            status_code=503,
+            detail="The GPU ran out of memory. Use fewer camera viewpoints or a GPU with more available memory.",
+        ) from exc
     except Exception as exc:
         shutil.rmtree(temp_root, ignore_errors=True)
         raise HTTPException(
