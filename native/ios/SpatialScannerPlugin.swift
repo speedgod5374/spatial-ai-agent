@@ -2,11 +2,13 @@ import ARKit
 import AVFoundation
 import Capacitor
 import CoreImage
+import CoreVideo
 import SceneKit
+import simd
 import UIKit
 
-/// Local Capacitor bridge for camera-based ARKit plane detection.
-/// This intentionally does not use RoomPlan, LiDAR, or scene reconstruction.
+/// Local Capacitor bridge for guided multi-view camera capture on non-LiDAR iPhones.
+/// ARKit supplies camera poses and optional plane hints; a separate backend must reconstruct the room mesh.
 @objc(SpatialScannerPlugin)
 public class SpatialScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "SpatialScannerPlugin"
@@ -413,8 +415,9 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
         frameLock.lock()
         let currentCount = capturedFrames.count
+        let captureAllowed = !hasFinished && currentCount < maximumCapturedFrames
         frameLock.unlock()
-        guard currentCount < maximumCapturedFrames else { return }
+        guard captureAllowed else { return }
 
         let pixelBuffer = frame.capturedImage
         let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
@@ -432,8 +435,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         }
 
         let intrinsics = frame.camera.intrinsics
-        let frameIndex = currentCount + 1
-        let record: [String: Any] = [
+        let recordBase: [String: Any] = [
             "id": String(format: "frame-%03d", frameIndex),
             "filename": String(format: "frames/frame-%03d.jpg", frameIndex),
             "imageBase64": jpegData.base64EncodedString(),
@@ -453,6 +455,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         ]
 
         frameLock.lock()
+        guard !hasFinished, capturedFrames.count < maximumCapturedFrames else {
+            frameLock.unlock()
+            return
+        }
+        let frameIndex = capturedFrames.count + 1
+        var record = recordBase
+        record["id"] = String(format: "frame-%03d", frameIndex)
+        record["filename"] = String(format: "frames/frame-%03d.jpg", frameIndex)
         capturedFrames.append(record)
         let newCount = capturedFrames.count
         frameLock.unlock()
@@ -553,13 +563,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         guard !hasFinished else { return }
         frameLock.lock()
         let frames = capturedFrames
-        frameLock.unlock()
         guard frames.count >= 6 else {
+            frameLock.unlock()
             updateTrackingDescription("Capture at least 6 different viewpoints before finishing. Walk around the room and turn slowly.")
             return
         }
-
         hasFinished = true
+        frameLock.unlock()
+
         sceneView.session.pause()
         onComplete?([
             "schemaVersion": 2,
@@ -576,8 +587,13 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     @objc private func cancelScan() {
-        guard !hasFinished else { return }
+        frameLock.lock()
+        guard !hasFinished else {
+            frameLock.unlock()
+            return
+        }
         hasFinished = true
+        frameLock.unlock()
         sceneView.session.pause()
         onCancel?()
     }
