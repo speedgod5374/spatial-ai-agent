@@ -397,7 +397,6 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     private func captureFrameIfUseful(_ frame: ARFrame) {
-        guard !hasFinished else { return }
         guard case .normal = frame.camera.trackingState else { return }
 
         let transform = frame.camera.transform
