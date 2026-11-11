@@ -65,6 +65,21 @@ export function normalizeScanPayload(payload, capturedAt = new Date().toISOStrin
   const frames = Array.isArray(payload.frames)
     ? payload.frames.filter(frame => frame && typeof frame.imageBase64 === "string" && frame.imageBase64.length > 0)
     : [];
+  const directionSource = Array.isArray(payload.directionBuckets)
+    ? payload.directionBuckets
+    : payload.captureQuality?.directionBuckets;
+  const directionBuckets = Array.isArray(directionSource)
+    ? [...new Set(directionSource.map(Number).filter(value => Number.isInteger(value) && value >= 0 && value < 8))].sort((a, b) => a - b)
+    : [];
+  const captureQuality = payload.captureQuality && typeof payload.captureQuality === "object"
+    ? {
+        method: String(payload.captureQuality.method || "unknown"),
+        darkFramesSkipped: Math.max(0, Math.trunc(finiteOr(payload.captureQuality.darkFramesSkipped))),
+        lowDetailFramesCaptured: Math.max(0, Math.trunc(finiteOr(payload.captureQuality.lowDetailFramesCaptured))),
+        directionBuckets,
+        note: String(payload.captureQuality.note || "")
+      }
+    : null;
 
   return {
     schemaVersion: 2,
@@ -75,6 +90,8 @@ export function normalizeScanPayload(payload, capturedAt = new Date().toISOStrin
     tracking: String(payload.tracking || "unknown"),
     frameCount: frames.length,
     frames,
+    directionBuckets,
+    captureQuality,
     rawPlanes: Array.isArray(payload.planes) ? payload.planes : [],
     surfaces
   };
