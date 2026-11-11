@@ -16,6 +16,7 @@ export function clampFurniturePosition(item, x, z, room) {
   const footprint = getFurnitureFootprint(item);
   const halfWidth = footprint.width / 2;
   const halfDepth = footprint.depth / 2;
+  if (footprint.width > room.width || footprint.depth > room.length) return null;
   return {
     x: Math.max(-room.width / 2 + halfWidth, Math.min(room.width / 2 - halfWidth, x)),
     z: Math.max(-room.length / 2 + halfDepth, Math.min(room.length / 2 - halfDepth, z))
@@ -36,6 +37,7 @@ export function furnitureOverlaps(item, position, others, gap = 0.06) {
 
 export function findFurniturePlacement(item, room, others, preferred = { x: 0, z: 0 }, step = 0.2) {
   const start = clampFurniturePosition(item, preferred.x, preferred.z, room);
+  if (!start) return null;
   if (!furnitureOverlaps(item, start, others)) return start;
 
   const maxRadius = Math.ceil(Math.max(room.width, room.length) / step);
@@ -52,7 +54,7 @@ export function findFurniturePlacement(item, room, others, preferred = { x: 0, z
     );
     for (const candidate of candidates) {
       const clamped = clampFurniturePosition(item, candidate.x, candidate.z, room);
-      if (!furnitureOverlaps(item, clamped, others)) return clamped;
+      if (clamped && !furnitureOverlaps(item, clamped, others)) return clamped;
     }
   }
   return null;
