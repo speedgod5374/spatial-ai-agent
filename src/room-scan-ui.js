@@ -239,12 +239,23 @@ function renderCapturedFrames() {
     : "No camera views were returned by the scanner.";
   frames.slice(0, 12).forEach((frame, index) => {
     if (!frame.imageBase64) return;
+    const card = document.createElement("div");
+    card.className = "w-28 shrink-0 space-y-1";
     const image = document.createElement("img");
     image.src = `data:image/jpeg;base64,${frame.imageBase64}`;
     image.alt = `Captured room viewpoint ${index + 1}`;
     image.loading = "lazy";
-    image.className = "h-20 w-28 shrink-0 rounded-lg object-cover border border-[#e5eae3] bg-[#f1f3ef]";
-    frameStrip.append(image);
+    image.className = "h-20 w-28 rounded-lg object-cover border border-[#e5eae3] bg-[#f1f3ef]";
+    const caption = document.createElement("p");
+    caption.className = frame.quality?.lowDetail
+      ? "text-[10px] text-[#9a743c] font-medium"
+      : "text-[10px] text-[#7d897f]";
+    caption.textContent = frame.quality?.lowDetail ? `View ${index + 1} · Low detail` : `View ${index + 1}`;
+    if (frame.quality) {
+      image.title = `Sampled brightness: ${Math.round(frame.quality.meanLuma)} · Local detail score: ${Number(frame.quality.textureScore).toFixed(1)}`;
+    }
+    card.append(image, caption);
+    frameStrip.append(card);
   });
 }
 
