@@ -229,8 +229,10 @@ function updateExportState() {
 function renderCapturedFrames() {
   frameStrip.replaceChildren();
   const frames = scan?.frames || [];
+  const darkSkipped = scan?.captureQuality?.darkFramesSkipped || 0;
+  const lowDetail = scan?.captureQuality?.lowDetailFramesCaptured || 0;
   captureSummary.textContent = frames.length
-    ? `${frames.length} viewpoints captured · images are paired with their camera positions and calibration.`
+    ? `${frames.length} viewpoints · ${scan?.directionBuckets?.length || 0}/8 horizontal directions sampled · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
     : "No camera views were returned by the scanner.";
   frames.slice(0, 12).forEach((frame, index) => {
     if (!frame.imageBase64) return;
@@ -399,8 +401,14 @@ function showScan(scanPayload) {
 
   const floors = scan.surfaces.filter(surface => surface.alignment === "horizontal").length;
   const walls = scan.surfaces.filter(surface => surface.alignment === "vertical").length;
+  const directionCount = scan.directionBuckets?.length || 0;
+  const darkSkipped = scan.captureQuality?.darkFramesSkipped || 0;
+  const lowDetail = scan.captureQuality?.lowDetailFramesCaptured || 0;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.frames.length} camera viewpoints captured · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
+    `${scan.frames.length} camera viewpoints · ${directionCount}/8 horizontal view directions sampled (directional variety, not room coverage) · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
+  if (darkSkipped || lowDetail) {
+    setStatus(`Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas. The capture bundle is still only input for a separate reconstruction step.`);
+  }
   review.classList.remove("hidden");
   renderCapturedFrames();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
