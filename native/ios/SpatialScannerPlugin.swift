@@ -436,8 +436,6 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
         let intrinsics = frame.camera.intrinsics
         let recordBase: [String: Any] = [
-            "id": String(format: "frame-%03d", frameIndex),
-            "filename": String(format: "frames/frame-%03d.jpg", frameIndex),
             "imageBase64": jpegData.base64EncodedString(),
             "timestamp": frame.timestamp,
             "cameraTransform": serializedMatrix(transform),
