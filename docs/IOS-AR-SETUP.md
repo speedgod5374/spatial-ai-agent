@@ -90,8 +90,7 @@ Build and run from Xcode, approve camera access, and tap **Scan Room**. Walk slo
 - [ ] The review UI shows the captured image thumbnails.
 - [ ] The capture ZIP opens and contains the JPEGs plus `capture.json` with poses and intrinsics.
 - [ ] Optional ARKit plane hints remain clearly labeled as hints, not a complete room model.
-- [ ] No camera frames or scan data are uploaded automatically.
-- [ ] No camera frames or scan data are sent to a server.
+- [ ] No camera frames or scan data are uploaded automatically or sent to a server.
 
 ## Accuracy and product limitations
 
