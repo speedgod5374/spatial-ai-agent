@@ -104,6 +104,16 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private var hasStarted = false
     private var hasFinished = false
     private var trackingDescription = "Tracking: initializing"
+    private var lastQualityEvaluationTimestamp: TimeInterval = 0
+    private var initialHorizontalForward: SIMD3<Float>?
+    private var capturedDirectionBuckets = Set<Int>()
+    private var darkFramesSkipped = 0
+    private var lowDetailFramesCaptured = 0
+
+    private struct FrameQuality {
+        let meanLuma: Double
+        let textureScore: Double
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -160,7 +170,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
         let guidanceLabel = UILabel()
         guidanceLabel.translatesAutoresizingMaskIntoConstraints = false
-        guidanceLabel.text = "Start near the doorway, then slowly walk around the room. Sweep across each wall, include the floor and ceiling, and revisit areas from another angle."
+        guidanceLabel.text = "Start near the doorway. Walk slowly around the room and sweep across every wall, floor, and ceiling. Overlap views from nearby positions. Keep lights on; include textured edges and furniture, and avoid mirrors or reflective surfaces."
         guidanceLabel.textColor = UIColor.white.withAlphaComponent(0.88)
         guidanceLabel.font = .systemFont(ofSize: 13, weight: .medium)
         guidanceLabel.numberOfLines = 0
@@ -396,6 +406,65 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         captureFrameIfUseful(frame)
     }
 
+    /// Samples the camera's luma plane at low resolution. This is a lightweight
+    /// quality hint, not a calibrated blur detector or a reconstruction confidence score.
+    private func evaluateImageQuality(_ pixelBuffer: CVPixelBuffer) -> FrameQuality? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let planar = CVPixelBufferIsPlanar(pixelBuffer)
+        let width = planar ? CVPixelBufferGetWidthOfPlane(pixelBuffer, 0) : CVPixelBufferGetWidth(pixelBuffer)
+        let height = planar ? CVPixelBufferGetHeightOfPlane(pixelBuffer, 0) : CVPixelBufferGetHeight(pixelBuffer)
+        let rowBytes = planar ? CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) : CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let address = planar ? CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0) : CVPixelBufferGetBaseAddress(pixelBuffer)
+        guard let address, width > 8, height > 8 else { return nil }
+
+        let bytes = address.assumingMemoryBound(to: UInt8.self)
+        let stepX = max(width / 24, 1)
+        let stepY = max(height / 18, 1)
+        var totalLuma = 0.0
+        var lumaSamples = 0
+        var totalDifference = 0.0
+        var differenceSamples = 0
+
+        for y in stride(from: 2, to: height - 2, by: stepY) {
+            for x in stride(from: 2, to: width - 2, by: stepX) {
+                let value = Int(bytes[y * rowBytes + x])
+                totalLuma += Double(value)
+                lumaSamples += 1
+
+                let right = Int(bytes[y * rowBytes + min(x + stepX, width - 1)])
+                let below = Int(bytes[min(y + stepY, height - 1) * rowBytes + x])
+                totalDifference += Double(abs(value - right) + abs(value - below)) / 2.0
+                differenceSamples += 1
+            }
+        }
+
+        guard lumaSamples > 0, differenceSamples > 0 else { return nil }
+        return FrameQuality(
+            meanLuma: totalLuma / Double(lumaSamples),
+            textureScore: totalDifference / Double(differenceSamples)
+        )
+    }
+
+    /// Groups accepted views into eight horizontal yaw directions relative to
+    /// the first accepted view. This measures directional variety, not room coverage.
+    private func directionBucket(for transform: simd_float4x4) -> Int? {
+        let forward = SIMD3<Float>(-transform.columns.2.x, 0, -transform.columns.2.z)
+        let magnitude = simd_length(forward)
+        guard magnitude > 0.001 else { return nil }
+        let normalizedForward = forward / magnitude
+
+        if initialHorizontalForward == nil {
+            initialHorizontalForward = normalizedForward
+        }
+        guard let initial = initialHorizontalForward else { return nil }
+
+        let angle = atan2(simd_cross(initial, normalizedForward).y, simd_dot(initial, normalizedForward))
+        let positiveAngle = angle < 0 ? angle + 2 * Float.pi : angle
+        return Int(positiveAngle / (Float.pi / 4)) % 8
+    }
+
     private func captureFrameIfUseful(_ frame: ARFrame) {
         guard case .normal = frame.camera.trackingState else { return }
 
@@ -418,7 +487,23 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         frameLock.unlock()
         guard captureAllowed else { return }
 
+        guard frame.timestamp - lastQualityEvaluationTimestamp >= 0.5 else { return }
+        lastQualityEvaluationTimestamp = frame.timestamp
+
         let pixelBuffer = frame.capturedImage
+        guard let quality = evaluateImageQuality(pixelBuffer) else {
+            updateTrackingDescription("Image quality could not be checked · Keep the camera steady and continue scanning.")
+            return
+        }
+        guard quality.meanLuma >= 42 else {
+            darkFramesSkipped += 1
+            updateTrackingDescription("Too dark to keep a useful view · Turn on the room lights and scan again.")
+            return
+        }
+        let lowDetail = quality.textureScore < 3.0
+        if lowDetail {
+            updateTrackingDescription("Low visual detail · Include furniture edges, corners, and textured objects in the next views.")
+        }
         let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
         let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
         let scale = min(CGFloat(1.0), CGFloat(1024.0) / CGFloat(max(sourceWidth, sourceHeight)))
@@ -434,7 +519,13 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         }
 
         let intrinsics = frame.camera.intrinsics
-        let recordBase: [String: Any] = [
+        let direction = directionBucket(for: transform)
+        var recordBase: [String: Any] = [
+            "quality": [
+                "meanLuma": quality.meanLuma,
+                "textureScore": quality.textureScore,
+                "lowDetail": lowDetail
+            ],
             "imageBase64": jpegData.base64EncodedString(),
             "timestamp": frame.timestamp,
             "cameraTransform": serializedMatrix(transform),
@@ -452,6 +543,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             "tracking": "normal"
         ]
 
+        if let direction {
+            recordBase["viewDirectionBucket"] = direction
+        }
+
         frameLock.lock()
         guard !hasFinished, capturedFrames.count < maximumCapturedFrames else {
             frameLock.unlock()
@@ -462,14 +557,21 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         record["id"] = String(format: "frame-%03d", frameIndex)
         record["filename"] = String(format: "frames/frame-%03d.jpg", frameIndex)
         capturedFrames.append(record)
+        if let direction {
+            capturedDirectionBuckets.insert(direction)
+        }
+        if lowDetail {
+            lowDetailFramesCaptured += 1
+        }
         let newCount = capturedFrames.count
+        let directionCount = capturedDirectionBuckets.count
         frameLock.unlock()
         lastCapturedTransform = transform
         lastCaptureTimestamp = frame.timestamp
         DispatchQueue.main.async {
             self.captureLabel.text = newCount >= self.maximumCapturedFrames
-                ? "Captured views: \(newCount) / \(self.maximumCapturedFrames) · Good coverage. You can finish the scan."
-                : "Captured views: \(newCount) / \(self.maximumCapturedFrames) · Keep moving slowly and overlap each view."
+                ? "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions sampled."
+                : "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions · Keep overlapping nearby views."
         }
     }
 
@@ -580,6 +682,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             "frameCount": frames.count,
             "frames": frames,
             "planes": serializedPlanes(),
+            "directionBuckets": Array(capturedDirectionBuckets).sorted(),
+            "captureQuality": [
+                "method": "sampled-luma-and-local-gradient",
+                "darkFramesSkipped": darkFramesSkipped,
+                "lowDetailFramesCaptured": lowDetailFramesCaptured,
+                "directionBuckets": Array(capturedDirectionBuckets).sorted(),
+                "note": "Image checks are capture guidance only, not a reconstruction accuracy score."
+            ],
             "reconstructionStatus": "pending"
         ])
     }
