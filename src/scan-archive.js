@@ -44,7 +44,9 @@ export function createStoredZip(files) {
   let localOffset = 0;
 
   for (const file of files) {
-    if (!file || typeof file.name !== "string" || !file.name || file.name.startsWith("/")) {
+    const pathParts = typeof file?.name === "string" ? file.name.split("/") : [];
+    if (!file || typeof file.name !== "string" || !file.name || file.name.startsWith("/") ||
+        file.name.includes("\\") || pathParts.some(part => !part || part === "..")) {
       throw new TypeError("Every ZIP entry needs a safe relative filename.");
     }
     const nameBytes = encoder.encode(file.name);
