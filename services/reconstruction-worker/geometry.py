@@ -17,6 +17,11 @@ def arkit_column_major_to_matrix(values: list[float]) -> np.ndarray:
     matrix = matrix_values.reshape((4, 4), order="F")
     if not np.allclose(matrix[3], [0.0, 0.0, 0.0, 1.0], atol=1e-3):
         raise ValueError("cameraToWorldARKit is not a valid homogeneous transform.")
+    rotation = matrix[:3, :3]
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=5e-2):
+        raise ValueError("cameraToWorldARKit contains an invalid rotation matrix.")
+    if not np.isclose(np.linalg.det(rotation), 1.0, atol=5e-2):
+        raise ValueError("cameraToWorldARKit rotation must have determinant close to +1.")
     return matrix
 
 
