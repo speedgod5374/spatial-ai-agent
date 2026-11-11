@@ -23,7 +23,7 @@ The export `spatial-studio-capture-bundle.zip` contains:
 - `frames/frame-001.jpg`, etc.: captured camera images.
 - `capture.json`: capture method, image dimensions, camera poses, 3×3 intrinsics, timestamps, ARKit plane hints, and reconstruction status.
 
-The camera transforms are serialized in ARKit's column-major 4×4 matrix order. The intrinsic matrices are stored as 3×3 row arrays and scaled to match the exported JPEG dimensions. Images are kept in the camera's sensor-native orientation; the manifest records this so the reconstruction backend can apply the correct orientation convention.
+The camera-to-world transforms are serialized in ARKit's column-major 4×4 matrix order as `cameraToWorldARKit`. The intrinsic matrices are stored as 3×3 row arrays and scaled to match the exported JPEG dimensions. Images are kept in the camera's sensor-native orientation. Apple documents that `ARCamera.imageResolution` describes the `capturedImage` buffer in the camera's native sensor orientation, so the image and intrinsics must be treated in that same orientation: [Apple ARCamera imageResolution](https://developer.apple.com/documentation/arkit/arcamera/imageresolution).
 
 The ZIP currently uses uncompressed ZIP entries ("store" mode). JPEGs are already compressed, so recompressing them would add CPU work without materially reducing the bundle.
 
@@ -32,19 +32,20 @@ The ZIP currently uses uncompressed ZIP entries ("store" mode). JPEGs are alread
 The app-side capture data is designed to feed a server-side multi-view reconstruction job. The recommended experiment is:
 
 1. Validate and normalize the JPEGs and camera metadata.
-2. Run a multi-view depth / geometry model such as Depth Anything 3 on a GPU-capable worker.
-3. Use ARKit camera poses as pose priors where the model accepts them, and compare the model's own camera estimates against the ARKit estimates.
+2. Run the Apache-2.0 DA3-LARGE-1.1 multi-view depth / geometry model on a GPU-capable worker. Its model card lists pose estimation and pose conditioning, and the API accepts world-to-camera extrinsics plus camera intrinsics: [DA3-LARGE-1.1 model card](https://huggingface.co/depth-anything/DA3-LARGE-1.1), [Depth Anything 3 API](https://github.com/ByteDance-Seed/Depth-Anything-3/blob/main/docs/API.md).
+3. Convert ARKit camera-to-world poses to the model's OpenCV world-to-camera convention, use them as pose priors, and compare the model's own camera estimates against the ARKit estimates.
 4. Fuse the per-view depth predictions into a point cloud or mesh.
 5. Regularize the geometry into a room representation: floor plane, wall planes, corners, ceiling, openings, and major obstacles.
 6. Export both a visual mesh (for example GLB) and a separate editable room layout with explicit dimensions and confidence values.
 
 Do not assume the first predicted mesh is dimensionally correct. Camera-only monocular depth can be scale-ambiguous or drift, and plain, reflective, transparent, or poorly lit surfaces can produce weak geometry. Use ARKit tracking as a constraint, retain per-surface confidence, and ask the user to correct dimensions before furniture placement.
 
-## Not yet implemented
+## Reconstruction worker status
 
-- No DA3 model is installed or running in this repository.
-- No GPU inference host, upload endpoint, job queue, or reconstruction API is connected.
-- No room mesh or editable floor-plan is generated from the image bundle yet.
+- A first FastAPI worker implementation now exists at [services/reconstruction-worker](../services/reconstruction-worker/README.md). It validates a capture ZIP, converts camera poses, calls DA3-LARGE-1.1, and exports a GLB point-cloud preview.
+- The worker is not deployed, and no CUDA inference host or reconstruction API URL is connected to the iOS app.
+- The DA3 call and pose-convention conversion have not yet been verified against a physical iPhone capture. The GLB preview is not an editable floor plan or architectural mesh.
+- No finished room mesh or editable floor plan is generated inside the app yet.
 - No furniture recognition is currently part of the capture pipeline.
 - The client does not upload images automatically. A future upload must be an explicit user action with a clear privacy notice and a secure backend.
 
