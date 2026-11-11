@@ -1,23 +1,29 @@
 # Spatial Studio
 
-Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS wrapper path for camera-based ARKit room-surface capture.
+Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS app for camera-based room capture on devices without LiDAR.
 
 ## Current capabilities
 
-- Web-based 3D room editor with editable dimensions and furniture placement.
-- Import/export of room JSON.
-- Native iOS ARKit prototype that detects horizontal and vertical plane observations.
-- Review UI for changing a surface's role, dimensions, world-space center, and confirmation state.
-- Three.js preview of the confirmed room-surface shell.
-- JSON export that keeps raw observations separate from the confirmed model.
+- Web-based 3D room planner with editable dimensions and furniture placement.
+- Native iOS capture using ARKit world tracking.
+- Automatic selection of overlapping camera keyframes as the user moves around a room.
+- Each captured JPEG is paired with its ARKit camera pose, camera intrinsics, dimensions, and timestamp.
+- Optional ARKit horizontal/vertical plane observations, clearly treated as hints rather than a complete room model.
+- Review screen with captured-view thumbnails.
+- ZIP export containing the captured images and `capture.json` for a reconstruction pipeline.
+- JSON export for manually confirmed ARKit plane hints.
 
 ## Important iPhone 17 limitation
 
-The **standard iPhone 17 has no LiDAR scanner**. This project does not use RoomPlan. Apple's `RoomCaptureSession.isSupported` check requires a device with a LiDAR Scanner.
+The **standard iPhone 17 has no LiDAR scanner**. This project does not use Apple's LiDAR-dependent RoomPlan workflow.
 
-The intended standard-iPhone-17 path uses ARKit world tracking and camera-based horizontal/vertical plane detection. This finds candidate flat surface patches; it does not guarantee a complete room outline or accurate reconstruction of every wall. The user must review and correct dimensions and positions before export.
+The non-LiDAR path captures overlapping images and ARKit camera poses. It does **not** create a complete 3D room model on the phone. Camera-only reconstruction can struggle with blank walls, reflective surfaces, poor lighting, and tracking drift. Room measurements must be checked and corrected before furniture-fit decisions.
 
-The GitHub Pages website cannot call native ARKit. Its scan button explains that the installed iOS app is required; it does not present a browser camera preview as a room scan.
+## 3D reconstruction prototype
+
+A first GPU-worker implementation is in [services/reconstruction-worker](services/reconstruction-worker/README.md). It accepts the exported ZIP, converts ARKit camera poses to the OpenCV convention expected by DA3, and requests a GLB point-cloud preview from the Apache-2.0 DA3-LARGE-1.1 model.
+
+The worker is not deployed or connected to the app. It requires a CUDA GPU and a protected API key. The GLB is a preliminary visual geometry result, **not** an editable floor plan, architectural mesh, or guaranteed measurement model. See [docs/CAMERA-ONLY-RECONSTRUCTION.md](docs/CAMERA-ONLY-RECONSTRUCTION.md) for the capture format, limitations, and next steps.
 
 ## Web development
 
@@ -30,16 +36,16 @@ npm test
 npm run build
 ```
 
-The production web build is written to `dist/`.
+The production web build is written to `dist/`. GitHub Pages can host the planner, but browser JavaScript cannot call native ARKit; room capture requires the installed iOS app.
 
 ## Native iOS setup
 
-A Mac with Xcode and a physical iPhone are required to compile, sign, install, and test the native scanner. Follow [docs/IOS-AR-SETUP.md](docs/IOS-AR-SETUP.md) for Capacitor setup, Swift plugin registration, camera permission, and the physical-device checklist.
+A Mac with Xcode and a physical iPhone are required to compile, sign, install, and test the scanner. Follow [docs/IOS-AR-SETUP.md](docs/IOS-AR-SETUP.md) for Capacitor setup, Swift plugin registration, camera permission, build steps, and physical-device checks.
 
 ## Privacy
 
-The native prototype processes camera frames through ARKit on-device. It returns plane measurements and transforms to the app; this feature does not upload camera frames or scan data to a backend. JSON export is initiated by the user and saved locally.
+Camera images and scan data are processed on-device during capture. Nothing is uploaded automatically. The user explicitly exports a capture ZIP. A future app-to-backend upload must include clear consent and use an authenticated server-side service; never embed the worker API key in the iOS app or a public Vite build.
 
-## Scope
+## Product scope
 
-The current scanning milestone is room geometry only. Database integration, user accounts, furniture recognition, product catalogs, and furniture recommendations are not part of this AR scanning implementation.
+This milestone focuses on reliable camera capture and the first geometry-reconstruction experiment. Furniture recognition, object-level editing, product catalogs, and AI redesign are separate stages and are not yet connected to this capture pipeline.
