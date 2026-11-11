@@ -144,6 +144,10 @@ export function buildCaptureArchive(scan) {
     frameCount: frames.length,
     frames: frames.map(({ imageBase64, ...metadata }) => metadata),
     planeHints: Array.isArray(scan.rawPlanes) ? scan.rawPlanes : [],
+    directionBuckets: Array.isArray(scan.directionBuckets)
+      ? scan.directionBuckets
+      : (Array.isArray(scan.captureQuality?.directionBuckets) ? scan.captureQuality.directionBuckets : []),
+    captureQuality: scan.captureQuality || null,
     reconstruction: {
       status: "not-generated",
       note: "This archive contains camera images, camera poses, intrinsics, and optional ARKit plane hints. A server-side multi-view reconstruction step is still required to generate a room mesh."
