@@ -99,6 +99,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private var lastCaptureTimestamp: TimeInterval = 0
     private let maximumCapturedFrames = 32
     private let minimumCaptureInterval: TimeInterval = 0.65
+    private let minimumTranslationForKeyframe: Float = 0.22
     private var observedPlanes: [UUID: ARPlaneAnchor] = [:]
     private let planesLock = NSLock()
     private var hasStarted = false
@@ -170,7 +171,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
 
         let guidanceLabel = UILabel()
         guidanceLabel.translatesAutoresizingMaskIntoConstraints = false
-        guidanceLabel.text = "Start near the doorway. Walk slowly around the room and sweep across every wall, floor, and ceiling. Overlap views from nearby positions. Keep lights on; include textured edges and furniture, and avoid mirrors or reflective surfaces."
+        guidanceLabel.text = "Start near the doorway. Walk slowly around the room and sweep across every wall, floor, and ceiling. Move at least 20–25 cm between captured views; turning in place alone does not create a new 3D viewpoint. Keep adjacent views overlapping. Keep lights on; include textured edges and furniture, and avoid mirrors or reflective surfaces."
         guidanceLabel.textColor = UIColor.white.withAlphaComponent(0.88)
         guidanceLabel.font = .systemFont(ofSize: 13, weight: .medium)
         guidanceLabel.numberOfLines = 0
@@ -499,16 +500,13 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         guard case .normal = frame.camera.trackingState else { return }
 
         let transform = frame.camera.transform
+        var baselineFromPrevious: Float = 0
         if let previous = lastCapturedTransform {
             let currentPosition = SIMD3<Float>(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
             let previousPosition = SIMD3<Float>(previous.columns.3.x, previous.columns.3.y, previous.columns.3.z)
-            let travel = simd_distance(currentPosition, previousPosition)
-            let currentForward = simd_normalize(SIMD3<Float>(-transform.columns.2.x, -transform.columns.2.y, -transform.columns.2.z))
-            let previousForward = simd_normalize(SIMD3<Float>(-previous.columns.2.x, -previous.columns.2.y, -previous.columns.2.z))
-            let directionDot = simd_clamp(simd_dot(currentForward, previousForward), -1.0, 1.0)
-            let turnAngle = acos(directionDot)
+            baselineFromPrevious = simd_distance(currentPosition, previousPosition)
             guard frame.timestamp - lastCaptureTimestamp >= minimumCaptureInterval,
-                  travel >= 0.22 || turnAngle >= 0.25 else { return }
+                  baselineFromPrevious >= minimumTranslationForKeyframe else { return }
         }
 
         frameLock.lock()
@@ -558,6 +556,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             ],
             "imageBase64": jpegData.base64EncodedString(),
             "timestamp": frame.timestamp,
+            "baselineFromPreviousMeters": Double(baselineFromPrevious),
             "cameraTransform": serializedMatrix(transform),
             "cameraToWorldARKit": serializedMatrix(transform),
             "intrinsics": [
@@ -695,7 +694,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         let frames = capturedFrames
         guard frames.count >= 6 else {
             frameLock.unlock()
-            updateTrackingDescription("Capture at least 6 different viewpoints before finishing. Walk around the room and turn slowly.")
+            updateTrackingDescription("Capture at least 6 viewpoints from different positions before finishing. Walk through the room; turning in place alone does not add a 3D viewpoint.")
             return
         }
         hasFinished = true
