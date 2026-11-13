@@ -7,7 +7,7 @@ The standard iPhone 17 does not provide LiDAR, so Spatial Studio does not use Ro
 The native iOS scanner now performs guided, multi-view camera capture:
 
 1. ARKit tracks the phone's position and orientation in a local world coordinate system.
-2. The scanner evaluates each new frame and keeps a keyframe after sufficient translation or rotation, with a minimum time gap between samples.
+2. The scanner evaluates each new frame and keeps a keyframe only after the phone has translated at least about 0.22 meters from the previous accepted camera position, with a minimum time gap between samples. Turning in place no longer fills the keyframe quota because rotation alone provides little parallax for 3D reconstruction.
 3. Each selected camera image is downscaled to a maximum dimension of 1024 pixels and encoded as JPEG.
 4. Every image is paired with its ARKit camera transform, scaled camera-intrinsic matrix, dimensions, timestamp, and tracking state.
 5. Optional horizontal and vertical ARKit plane observations are retained as hints. They are not treated as a room mesh.
