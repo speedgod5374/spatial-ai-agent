@@ -402,20 +402,51 @@ function updateModel(fit = false) {
   updateExportState();
 }
 
-function triggerDownload(blob, filename) {
+async function deliverFile(blob, filename) {
+  const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+
+  // WKWebView's synthetic download links are unreliable on iOS. Prefer the
+  // native share sheet so the user can choose Save to Files.
+  if (typeof navigator.share === "function" && typeof navigator.canShare === "function") {
+    try {
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename });
+        return "shared";
+      }
+    } catch (error) {
+      if (error?.name === "AbortError") return "cancelled";
+      throw error;
+    }
+  }
+
+  // Browser fallback. Keep the object URL alive long enough for iOS Safari
+  // and desktop browsers to finish consuming the download.
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.style.display = "none";
+  document.body.append(link);
   link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return "download";
 }
 
-function downloadJSON() {
+async function downloadJSON() {
   if (!scan) return;
-  const payload = createRoomModelExport(scan);
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  triggerDownload(blob, "spatial-studio-room-hints.json");
+  try {
+    const payload = createRoomModelExport(scan);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const result = await deliverFile(blob, "spatial-studio-room-hints.json");
+    exportStatus.textContent = result === "cancelled"
+      ? "Save cancelled."
+      : result === "shared"
+        ? "Choose Save to Files in the iOS share sheet."
+        : "JSON export started.";
+  } catch (error) {
+    exportStatus.textContent = error instanceof Error ? error.message : "Could not export the room hints.";
+  }
 }
 
 async function downloadCaptureBundle() {
@@ -424,10 +455,14 @@ async function downloadCaptureBundle() {
   captureExportStatus.textContent = "Packaging captured images and calibration…";
   try {
     const blob = buildCaptureArchive(scan);
-    triggerDownload(blob, "spatial-studio-capture-bundle.zip");
-    captureExportStatus.textContent = "Capture bundle created. It is ready to upload when the reconstruction service is connected.";
+    const result = await deliverFile(blob, "spatial-studio-capture-bundle.zip");
+    captureExportStatus.textContent = result === "cancelled"
+      ? "Save cancelled. Your captured scan is still available here; tap Export to try again."
+      : result === "shared"
+        ? "Choose Save to Files in the iOS share sheet to store the ZIP."
+        : "ZIP export started. Check your browser downloads.";
   } catch (error) {
-    captureExportStatus.textContent = error instanceof Error ? error.message : "Could not create the capture bundle.";
+    captureExportStatus.textContent = error instanceof Error ? error.message : "Could not create or share the capture bundle.";
   } finally {
     captureExportButton.disabled = false;
   }
