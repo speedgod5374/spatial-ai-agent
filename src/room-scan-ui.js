@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createRoomModelExport, getConfirmedSurfaces, normalizeScanPayload } from "./room-model.js";
 import { buildCaptureArchive } from "./scan-archive.js";
+import { analyzeCameraPath } from "./capture-diagnostics.js";
 import { isNativeARKitAvailable, scanRoomWithARKit } from "./native-scanner.js";
 
 const originalScanButton = document.getElementById("scan-button");
@@ -245,8 +246,12 @@ function renderCapturedFrames() {
   const directionSummary = scan?.captureQuality
     ? `${scan.directionBuckets.length}/8 horizontal directions sampled`
     : "direction metrics unavailable";
+  const cameraPath = analyzeCameraPath(frames);
+  const pathSummary = cameraPath.validPoseCount >= 2
+    ? `camera path ${cameraPath.pathLengthMeters.toFixed(1)} m · horizontal span ${cameraPath.horizontalSpanXMeters.toFixed(1)} × ${cameraPath.horizontalSpanZMeters.toFixed(1)} m (path only)`
+    : "camera path unavailable";
   captureSummary.textContent = frames.length
-    ? `${frames.length} viewpoints · ${directionSummary} · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
+    ? `${frames.length} viewpoints · ${directionSummary} · ${pathSummary} · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
     : "No camera views were returned by the scanner.";
 
   const directionIndicator = panel.querySelector("#scan-direction-indicator");
