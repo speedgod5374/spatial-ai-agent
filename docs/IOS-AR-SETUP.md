@@ -25,7 +25,7 @@ Apple references:
 2. The browser version never pretends its camera preview is an ARKit scan.
 3. A Capacitor iOS wrapper hosts the same web app.
 4. A local Swift Capacitor plugin opens a native ARSCNView and starts ARKit world tracking.
-5. The plugin automatically selects camera keyframes as the phone moves, downsizes each image to at most 1024 pixels on its longest side, and records the camera transform, intrinsics, image dimensions, and timestamp.
+5. The plugin selects a new camera keyframe after at least about 0.22 meters of camera translation (not rotation alone), downsizes each image to at most 1024 pixels on its longest side, and records the camera transform, intrinsics, image dimensions, and timestamp.
 6. A lightweight luma sample skips very dark candidate images; a local-gradient heuristic flags low-detail views. These heuristics are capture guidance only, not blur detection or reconstruction confidence.
 7. Accepted views are grouped into eight relative horizontal heading buckets. This reports directional variety only, not room coverage.
 8. Horizontal and vertical ARKit plane anchors are collected as optional hints; they are not treated as a room mesh.
@@ -86,7 +86,7 @@ Build and run from Xcode, approve camera access, and tap **Scan Room**. Walk slo
 - [ ] First scan requests camera access with the stated purpose.
 - [ ] Denied/restricted camera access produces a clear error and does not crash.
 - [ ] ARKit tracking status changes between normal and limited states as the phone moves.
-- [ ] The captured-view counter increments as the phone moves and turns, but not on every camera frame.
+- [ ] The captured-view counter increments after the phone moves to a new position; turning in place alone does not add another keyframe.
 - [ ] Very dark candidate views are skipped, and low-detail views are flagged in the review summary.
 - [ ] The direction count changes as the phone turns; it is described as directional variety, not room coverage.
 - [ ] Tracking-limited states pause keyframe capture until tracking returns to normal.
