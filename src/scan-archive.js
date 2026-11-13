@@ -19,15 +19,8 @@ function write32(view, offset, value) {
   view.setUint32(offset, value >>> 0, true);
 }
 
-function joinBytes(parts) {
-  const size = parts.reduce((total, part) => total + part.length, 0);
-  const result = new Uint8Array(size);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
-  }
-  return result;
+function zipBlob(parts) {
+  return new Blob(parts, { type: "application/zip" });
 }
 
 /**
@@ -37,6 +30,10 @@ function joinBytes(parts) {
 export function createStoredZip(files) {
   if (!Array.isArray(files) || files.length === 0) {
     throw new TypeError("A ZIP archive needs at least one file.");
+  }
+
+  if (files.length > 0xffff) {
+    throw new RangeError("The ZIP archive contains too many files.");
   }
 
   const localParts = [];
@@ -51,6 +48,9 @@ export function createStoredZip(files) {
     }
     const nameBytes = encoder.encode(file.name);
     const data = file.data instanceof Uint8Array ? file.data : encoder.encode(String(file.data ?? ""));
+    if (nameBytes.length > 0xffff || data.length > 0xffffffff || localOffset > 0xffffffff) {
+      throw new RangeError("A ZIP entry exceeds the supported ZIP32 size limit.");
+    }
     const checksum = crc32(data);
 
     const localHeader = new Uint8Array(30 + nameBytes.length);
@@ -94,8 +94,10 @@ export function createStoredZip(files) {
     localOffset += localHeader.length + data.length;
   }
 
-  const centralDirectory = joinBytes(centralParts);
-  const localFileData = joinBytes(localParts);
+  const centralDirectorySize = centralParts.reduce((total, part) => total + part.length, 0);
+  if (localOffset + centralDirectorySize > 0xffffffff) {
+    throw new RangeError("The capture is too large for a standard ZIP archive.");
+  }
   const end = new Uint8Array(22);
   const endView = new DataView(end.buffer);
   write32(endView, 0, 0x06054b50);
@@ -103,11 +105,12 @@ export function createStoredZip(files) {
   write16(endView, 6, 0);
   write16(endView, 8, files.length);
   write16(endView, 10, files.length);
-  write32(endView, 12, centralDirectory.length);
-  write32(endView, 16, localFileData.length);
+  write32(endView, 12, centralDirectorySize);
+  write32(endView, 16, localOffset);
   write16(endView, 20, 0);
 
-  return joinBytes([localFileData, centralDirectory, end]);
+  // Blob accepts parts directly, avoiding a second full-size Uint8Array copy of all JPEGs.
+  return zipBlob([...localParts, ...centralParts, end]);
 }
 
 function decodeBase64(value) {
