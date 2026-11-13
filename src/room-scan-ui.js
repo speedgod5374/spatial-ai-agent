@@ -30,7 +30,7 @@ panel.innerHTML = `
   </div>
   <div class="grid sm:grid-cols-[1fr_auto] gap-3 items-center rounded-xl bg-[#f7f8f6] border border-[#e8ece7] p-3">
     <div class="text-xs text-[#5f6368] leading-relaxed">
-      <strong class="text-[#344139]">Scan guidance:</strong> start near the doorway, then slowly walk around the room. Sweep across every wall, include the floor and ceiling, and revisit areas from another angle. Good lighting and visible room details help tracking.
+      <strong class="text-[#344139]">Scan guidance:</strong> start near the doorway, then slowly walk around the room. Move at least 20–25 cm between captured views; turning in place alone does not add a 3D viewpoint. Keep adjacent views overlapping, sweep across every wall, and revisit areas from another angle. Good lighting and visible room details help tracking.
       <div class="mt-1 text-[10px] text-[#89938b]">Privacy: selected still frames stay on-device and are not uploaded automatically.</div>
     </div>
     <button id="scan-start" type="button" class="bg-[#214b39] text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px] whitespace-nowrap">Start room scan</button>
