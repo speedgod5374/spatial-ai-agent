@@ -308,6 +308,14 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         updateCounts()
     }
 
+    func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
+        guard let plane = anchor as? ARPlaneAnchor else { return }
+        planesLock.lock()
+        observedPlanes.removeValue(forKey: plane.identifier)
+        planesLock.unlock()
+        updateCounts()
+    }
+
     private func addPlaneVisualization(for plane: ARPlaneAnchor, to anchorNode: SCNNode) {
         let isHorizontal = plane.alignment == .horizontal
         let width = CGFloat(plane.extent.x)
