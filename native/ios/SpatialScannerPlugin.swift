@@ -600,7 +600,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         DispatchQueue.main.async {
             self.captureLabel.text = newCount >= self.maximumCapturedFrames
                 ? "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions sampled."
-                : "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions · Keep overlapping nearby views."
+                : "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions · Move 20–25 cm between views and keep them overlapping."
         }
     }
 
