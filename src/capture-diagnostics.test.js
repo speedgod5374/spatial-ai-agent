@@ -55,3 +55,16 @@ test("returns zero metrics when no valid poses exist", () => {
     translationSteps: 0
   });
 });
+
+test("rotation-only viewpoints have no camera translation baseline", () => {
+  const result = analyzeCameraPath([
+    { cameraToWorldARKit: pose(1, 0, 2) },
+    { cameraToWorldARKit: pose(1, 0, 2) },
+    { cameraToWorldARKit: pose(1, 0, 2) }
+  ]);
+
+  assert.equal(result.pathLengthMeters, 0);
+  assert.equal(result.translationSteps, 0);
+  assert.equal(result.horizontalSpanXMeters, 0);
+  assert.equal(result.horizontalSpanZMeters, 0);
+});
