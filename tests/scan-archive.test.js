@@ -2,14 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildCaptureArchive, createStoredZip } from "../src/scan-archive.js";
 
-test("creates a ZIP archive with valid local and end-of-central-directory signatures", () => {
+test("creates a ZIP archive with valid local and end-of-central-directory signatures", async () => {
   const archive = createStoredZip([
     { name: "hello.txt", data: new TextEncoder().encode("hello") }
   ]);
-  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  assert.equal(archive.type, "application/zip");
+  const bytes = new Uint8Array(await archive.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   assert.equal(view.getUint32(0, true), 0x04034b50);
-  assert.equal(view.getUint32(archive.length - 22, true), 0x06054b50);
-  assert.ok(new TextDecoder().decode(archive).includes("hello.txt"));
+  assert.equal(view.getUint32(bytes.length - 22, true), 0x06054b50);
+  assert.ok(new TextDecoder().decode(bytes).includes("hello.txt"));
 });
 
 test("capture bundle includes image files and strips base64 out of the manifest", async () => {
