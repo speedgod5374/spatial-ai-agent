@@ -5,7 +5,7 @@ Spatial Studio is a Vite + Three.js room planner with a Capacitor iOS app for ca
 ## Current capabilities
 
 - Web-based 3D room planner with editable dimensions and furniture placement.
-- Native iOS capture using ARKit world tracking.
+- Dedicated **AR** navigation screen and Scan Room shortcut that launch native iOS capture using ARKit world tracking.
 - Translation-based camera keyframes: after the first view, the phone must move about 22 cm before another 3D keyframe is accepted; turning in place alone does not fill the capture.
 - Each captured JPEG is paired with its ARKit camera pose, camera intrinsics, dimensions, and timestamp.
 - Lightweight image checks skip very dark candidate frames and flag low-detail views for review.
