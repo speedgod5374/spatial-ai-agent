@@ -143,6 +143,16 @@ export function createRoomModelExport(scan) {
     pointCloud: Array.isArray(scan?.pointCloud) ? scan.pointCloud : [],
     pointCloudType: scan?.pointCloudType || "none",
     pointCloudNote: scan?.pointCloudNote || "Sparse visual tracking landmarks are not dense surface geometry.",
+    detectedObjects: (Array.isArray(scan?.detectedObjects) ? scan.detectedObjects : []).map(object => ({
+      id: object.id,
+      category: object.category,
+      dimensions: { ...object.dimensions },
+      center: [...object.center],
+      pointCount: object.pointCount,
+      confidence: object.confidence,
+      source: object.source,
+      reviewRequired: true
+    })),
     model: {
       type: "confirmed-plane-hints",
       surfaces: getConfirmedSurfaces(surfaces).map(serialize)
