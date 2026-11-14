@@ -112,6 +112,7 @@ reconstructionPanel.innerHTML = `
   </details>
   <div class="flex flex-wrap items-center gap-2">
     <button id="reconstruction-run" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Reconstruct 3D preview</button>
+    <span id="reconstruction-working" class="hidden inline-flex items-center gap-2 text-[11px] text-[#477151]"><span class="h-2 w-2 rounded-full bg-[#477151] animate-pulse"></span>Processing scan</span>
     <span id="reconstruction-status" class="text-[11px] text-[#7a857d]" role="status" aria-live="polite">Capture at least 6 viewpoints, then connect a GPU worker.</span>
   </div>
   <div id="reconstruction-result" class="hidden rounded-lg border border-[#e5eae3] overflow-hidden">
@@ -146,6 +147,7 @@ const reconstructionWorkerKeyInput = panel.querySelector("#reconstruction-worker
 const reconstructionCheckButton = panel.querySelector("#reconstruction-check-worker");
 const reconstructionRunButton = panel.querySelector("#reconstruction-run");
 const reconstructionStatus = panel.querySelector("#reconstruction-status");
+const reconstructionWorking = panel.querySelector("#reconstruction-working");
 const reconstructionEngineStatus = panel.querySelector("#reconstruction-engine-status");
 const reconstructionResult = panel.querySelector("#reconstruction-result");
 const reconstructionResultMeta = panel.querySelector("#reconstruction-result-meta");
@@ -299,6 +301,7 @@ async function reconstructCapturedRoom() {
   if (reconstructionBusy) return;
   reconstructionBusy = true;
   reconstructionRunButton.disabled = true;
+  reconstructionWorking.classList.remove("hidden");
   reconstructionCheckButton.disabled = true;
   reconstructionResult.classList.add("hidden");
   reconstructionEngineStatus.textContent = "Connecting…";
@@ -349,6 +352,7 @@ async function reconstructCapturedRoom() {
     reconstructionEngineStatus.textContent = "Reconstruction unavailable";
   } finally {
     reconstructionBusy = false;
+    reconstructionWorking.classList.add("hidden");
     reconstructionRunButton.disabled = !scan?.frames || scan.frames.length < 6;
     reconstructionCheckButton.disabled = false;
   }
