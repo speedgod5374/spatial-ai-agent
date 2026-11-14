@@ -25,6 +25,26 @@ test("converts a horizontal ARKit floor patch into world-space corners", () => {
   );
 });
 
+test("rotates floor patch extents using the ARKit world transform", () => {
+  const rotateY90 = [
+    0, 0, -1, 0,
+    0, 1, 0, 0,
+    1, 0, 0, 0,
+    0, 0, 0, 1
+  ];
+  const corners = getSurfaceWorldCorners({
+    alignment: "horizontal",
+    width: 4,
+    depth: 2,
+    center: { x: 1, y: 0, z: -3 },
+    transform: rotateY90
+  });
+  const xValues = corners.map(point => point.x);
+  const zValues = corners.map(point => point.z);
+  assert.ok(Math.abs((Math.max(...xValues) - Math.min(...xValues)) - 2) < 0.001);
+  assert.ok(Math.abs((Math.max(...zValues) - Math.min(...zValues)) - 4) < 0.001);
+});
+
 test("builds one room envelope from floor and vertical wall observations", () => {
   const scan = {
     surfaces: [
