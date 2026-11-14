@@ -92,6 +92,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private let statusLabel = UILabel()
     private let countLabel = UILabel()
     private let captureLabel = UILabel()
+    private let captureProgressView = UIProgressView(progressViewStyle: .default)
     private let imageContext = CIContext()
     private let frameLock = NSLock()
     private var capturedFrames: [[String: Any]] = []
@@ -106,6 +107,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private var hasFinished = false
     private var trackingDescription = "Tracking: initializing"
     private var lastQualityEvaluationTimestamp: TimeInterval = 0
+    private var lastCaptureGuidanceTimestamp: TimeInterval = 0
     private var initialHorizontalForward: SIMD3<Float>?
     private var capturedDirectionBuckets = Set<Int>()
     private var darkFramesSkipped = 0
@@ -187,6 +189,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         countLabel.textColor = UIColor.white.withAlphaComponent(0.76)
         countLabel.font = .systemFont(ofSize: 12, weight: .regular)
 
+        captureProgressView.translatesAutoresizingMaskIntoConstraints = false
+        captureProgressView.progress = 0
+        captureProgressView.progressTintColor = UIColor(red: 0.30, green: 0.96, blue: 0.72, alpha: 1)
+        captureProgressView.trackTintColor = UIColor.white.withAlphaComponent(0.18)
         captureLabel.translatesAutoresizingMaskIntoConstraints = false
         captureLabel.text = "Captured views: 0 / 32 · Move slowly to collect overlapping views."
         captureLabel.textColor = UIColor(red: 0.30, green: 0.96, blue: 0.88, alpha: 1)
@@ -204,6 +210,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         topPanel.addSubview(privacyLabel)
         bottomPanel.addSubview(statusLabel)
         bottomPanel.addSubview(countLabel)
+        bottomPanel.addSubview(captureProgressView)
         bottomPanel.addSubview(captureLabel)
         bottomPanel.addSubview(finishButton)
         bottomPanel.addSubview(cancelButton)
@@ -238,7 +245,12 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             countLabel.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
             countLabel.trailingAnchor.constraint(equalTo: statusLabel.trailingAnchor),
 
-            captureLabel.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 7),
+            captureProgressView.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 10),
+            captureProgressView.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
+            captureProgressView.trailingAnchor.constraint(equalTo: statusLabel.trailingAnchor),
+            captureProgressView.heightAnchor.constraint(equalToConstant: 4),
+
+            captureLabel.topAnchor.constraint(equalTo: captureProgressView.bottomAnchor, constant: 7),
             captureLabel.leadingAnchor.constraint(equalTo: statusLabel.leadingAnchor),
             captureLabel.trailingAnchor.constraint(equalTo: statusLabel.trailingAnchor),
 
@@ -434,7 +446,46 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        updateLiveCaptureFeedback(frame)
         captureFrameIfUseful(frame)
+    }
+
+    /// Gives immediate feedback while the user moves, even before a new keyframe
+    /// crosses the translation threshold. This prevents the scanner from looking idle.
+    private func updateLiveCaptureFeedback(_ frame: ARFrame) {
+        guard case .normal = frame.camera.trackingState else { return }
+        guard frame.timestamp - lastCaptureGuidanceTimestamp >= 0.25 else { return }
+        lastCaptureGuidanceTimestamp = frame.timestamp
+
+        let current = frame.camera.transform
+        let currentPosition = SIMD3<Float>(current.columns.3.x, current.columns.3.y, current.columns.3.z)
+        let distance = lastCapturedTransform.map { previous in
+            let previousPosition = SIMD3<Float>(previous.columns.3.x, previous.columns.3.y, previous.columns.3.z)
+            return simd_distance(currentPosition, previousPosition)
+        }
+
+        frameLock.lock()
+        let count = capturedFrames.count
+        let finished = hasFinished
+        frameLock.unlock()
+        guard !finished else { return }
+
+        let message: String
+        if count >= maximumCapturedFrames {
+            message = "Capture limit reached · Finish the scan to review your views."
+        } else if let distance {
+            let remaining = max(0, Int(((minimumTranslationForKeyframe - distance) * 100).rounded()))
+            message = distance >= minimumTranslationForKeyframe
+                ? "New position ready · Hold steady to capture the next view. (\(count)/\(maximumCapturedFrames))"
+                : "Scanning · Move about \(remaining) cm farther for the next view. (\(count)/\(maximumCapturedFrames))"
+        } else {
+            message = "Scanning · Move slowly through the room to capture the first view. (0/\(maximumCapturedFrames))"
+        }
+
+        DispatchQueue.main.async {
+            self.captureLabel.text = message
+            self.captureProgressView.setProgress(Float(count) / Float(self.maximumCapturedFrames), animated: true)
+        }
     }
 
     /// Samples the camera's luma plane at low resolution. This is a lightweight
@@ -598,6 +649,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         lastCapturedTransform = transform
         lastCaptureTimestamp = frame.timestamp
         DispatchQueue.main.async {
+            self.captureProgressView.setProgress(Float(newCount) / Float(self.maximumCapturedFrames), animated: true)
             self.captureLabel.text = newCount >= self.maximumCapturedFrames
                 ? "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions sampled."
                 : "Views: \(newCount)/\(self.maximumCapturedFrames) · \(directionCount)/8 horizontal directions · Move 20–25 cm between views and keep them overlapping."
@@ -701,6 +753,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         frameLock.unlock()
 
         sceneView.session.pause()
+        DispatchQueue.main.async {
+            self.captureProgressView.setProgress(Float(frames.count) / Float(self.maximumCapturedFrames), animated: true)
+            self.captureLabel.text = "Capture complete · \(frames.count) viewpoints ready for reconstruction."
+        }
         onComplete?([
             "schemaVersion": 2,
             "source": "ARKit guided multi-view camera capture",
