@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createRoomModelExport, getConfirmedSurfaces, normalizeScanPayload } from "./room-model.js";
 import { buildCaptureArchive } from "./scan-archive.js";
 import { analyzeCameraPath } from "./capture-diagnostics.js";
@@ -83,6 +84,47 @@ panel.innerHTML = `
     </div>
   </div>
 `;
+
+const reconstructionPanel = document.createElement("section");
+reconstructionPanel.id = "scan-reconstruction";
+reconstructionPanel.className = "rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3";
+reconstructionPanel.innerHTML = `
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <div>
+      <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">3D reconstruction</div>
+      <h3 class="text-sm font-semibold mt-1">Build a 3D preview</h3>
+      <p class="text-[11px] text-[#778279] mt-1">Send the captured views to your GPU worker to generate a point-cloud preview.</p>
+    </div>
+    <span id="reconstruction-engine-status" class="text-[10px] bg-[#f1f3f4] text-[#667067] px-2.5 py-1.5 rounded-full">Worker not checked</span>
+  </div>
+  <details id="reconstruction-settings" class="rounded-lg border border-[#e8ece7] bg-[#f8faf7] p-3">
+    <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Connect reconstruction worker</summary>
+    <div class="grid gap-2 mt-3">
+      <label class="text-[10px] text-[#69766d]">Worker address
+        <input id="reconstruction-worker-url" type="url" inputmode="url" autocomplete="url" placeholder="http://your-computer.local:8000" class="mt-1 w-full border border-[#dfe5de] bg-white p-2.5 text-xs rounded-md">
+      </label>
+      <label class="text-[10px] text-[#69766d]">Worker API key
+        <input id="reconstruction-worker-key" type="password" autocomplete="off" placeholder="Enter the key configured on your worker" class="mt-1 w-full border border-[#dfe5de] bg-white p-2.5 text-xs rounded-md">
+      </label>
+      <p class="text-[10px] leading-relaxed text-[#818c82]">Use the computer's local network address and keep both devices on the same Wi-Fi. The key stays in this app session and is not saved. Scan images are sent only after you tap Reconstruct.</p>
+      <button id="reconstruction-check-worker" type="button" class="border border-[#dce3dc] bg-white rounded-md px-3 py-2.5 text-xs font-semibold text-[#526257]">Check worker connection</button>
+    </div>
+  </details>
+  <div class="flex flex-wrap items-center gap-2">
+    <button id="reconstruction-run" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Reconstruct 3D preview</button>
+    <span id="reconstruction-status" class="text-[11px] text-[#7a857d]" role="status" aria-live="polite">Capture at least 6 viewpoints, then connect a GPU worker.</span>
+  </div>
+  <div id="reconstruction-result" class="hidden rounded-lg border border-[#e5eae3] overflow-hidden">
+    <div class="px-3 py-2 flex items-center justify-between gap-2 border-b border-[#e5eae3] bg-[#f8faf7]">
+      <span class="text-[10px] uppercase tracking-wider font-semibold text-[#647067]">Generated 3D point cloud</span>
+      <span class="text-[10px] text-[#89938b]">Drag to orbit · pinch to zoom</span>
+    </div>
+    <canvas id="reconstruction-canvas" class="block w-full h-[320px]"></canvas>
+    <p id="reconstruction-result-meta" class="px-3 py-2 border-t border-[#e5eae3] text-[10px] text-[#7d897f]">Preview geometry is not an editable architectural model. Check walls and dimensions before using it for layout.</p>
+  </div>
+`;
+panel.append(reconstructionPanel);
+
 viewer.prepend(panel);
 
 const status = panel.querySelector("#scan-status");
@@ -99,6 +141,21 @@ const planeDetails = panel.querySelector("#scan-plane-details");
 const startButton = panel.querySelector("#scan-start");
 const scanButton = document.getElementById("scan-button");
 
+const reconstructionWorkerUrlInput = panel.querySelector("#reconstruction-worker-url");
+const reconstructionWorkerKeyInput = panel.querySelector("#reconstruction-worker-key");
+const reconstructionCheckButton = panel.querySelector("#reconstruction-check-worker");
+const reconstructionRunButton = panel.querySelector("#reconstruction-run");
+const reconstructionStatus = panel.querySelector("#reconstruction-status");
+const reconstructionEngineStatus = panel.querySelector("#reconstruction-engine-status");
+const reconstructionResult = panel.querySelector("#reconstruction-result");
+const reconstructionResultMeta = panel.querySelector("#reconstruction-result-meta");
+const reconstructionCanvas = panel.querySelector("#reconstruction-canvas");
+const savedWorkerUrl = localStorage.getItem("spatialStudio.reconstructionWorkerUrl");
+if (savedWorkerUrl) reconstructionWorkerUrlInput.value = savedWorkerUrl;
+reconstructionWorkerUrlInput.addEventListener("change", () => {
+  localStorage.setItem("spatialStudio.reconstructionWorkerUrl", reconstructionWorkerUrlInput.value.trim());
+});
+
 let scan = null;
 let renderer = null;
 let scene = null;
@@ -108,8 +165,193 @@ let modelGroup = null;
 let animationStarted = false;
 let resizeObserver = null;
 
+let reconstructionBusy = false;
+let reconstructionRenderer = null;
+let reconstructionScene = null;
+let reconstructionCamera = null;
+let reconstructionControls = null;
+let reconstructionGroup = null;
+let reconstructionAnimationStarted = false;
+let reconstructionResizeObserver = null;
+
 function setStatus(message) {
   status.textContent = message;
+}
+
+function getWorkerBaseUrl() {
+  const raw = reconstructionWorkerUrlInput.value.trim().replace(/\\/+$/, "");
+  if (!raw) throw new Error("Enter your reconstruction worker address first.");
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("Enter a valid worker address, including http:// or https://.");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("The worker address must use http:// or https://.");
+  }
+  return raw;
+}
+
+async function checkReconstructionWorker(updateStatus = true) {
+  const baseUrl = getWorkerBaseUrl();
+  if (updateStatus) reconstructionStatus.textContent = "Checking GPU worker…";
+  const response = await fetch(baseUrl + "/health", { cache: "no-store" });
+  const health = await response.json().catch(() => ({}));
+  if (!response.ok || health.status !== "ok") {
+    throw new Error(health.detail || "The worker did not return a healthy status.");
+  }
+  if (health.cudaAvailable !== true) {
+    reconstructionEngineStatus.textContent = "GPU unavailable";
+    throw new Error("Worker is reachable, but it cannot see an NVIDIA CUDA GPU. Start it on the computer with the NVIDIA GPU.");
+  }
+  reconstructionEngineStatus.textContent = health.modelLoaded ? "GPU ready · model loaded" : "GPU ready · model loads on first scan";
+  if (updateStatus) {
+    reconstructionStatus.textContent = health.modelLoaded
+      ? "GPU worker connected and model loaded."
+      : "GPU worker connected. The first reconstruction will download/load the model.";
+  }
+  return { baseUrl, health };
+}
+
+function initializeReconstructionViewer() {
+  if (reconstructionRenderer) return;
+  reconstructionScene = new THREE.Scene();
+  reconstructionScene.background = new THREE.Color(0xf3f5f1);
+  reconstructionCamera = new THREE.PerspectiveCamera(48, 1, 0.01, 1000);
+  reconstructionCamera.position.set(3, 2, 3);
+  reconstructionRenderer = new THREE.WebGLRenderer({ canvas: reconstructionCanvas, antialias: true });
+  reconstructionRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  reconstructionScene.add(new THREE.HemisphereLight(0xffffff, 0x8d998e, 1.8));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  keyLight.position.set(4, 8, 5);
+  reconstructionScene.add(keyLight);
+  reconstructionGroup = new THREE.Group();
+  reconstructionScene.add(reconstructionGroup);
+  reconstructionControls = new OrbitControls(reconstructionCamera, reconstructionRenderer.domElement);
+  reconstructionControls.enableDamping = true;
+  reconstructionResizeObserver = new ResizeObserver(() => {
+    const width = Math.max(reconstructionCanvas.clientWidth, 1);
+    const height = Math.max(reconstructionCanvas.clientHeight, 1);
+    reconstructionRenderer.setSize(width, height, false);
+    reconstructionCamera.aspect = width / height;
+    reconstructionCamera.updateProjectionMatrix();
+  });
+  reconstructionResizeObserver.observe(reconstructionCanvas);
+  if (!reconstructionAnimationStarted) {
+    reconstructionAnimationStarted = true;
+    const animate = () => {
+      requestAnimationFrame(animate);
+      reconstructionControls?.update();
+      if (reconstructionRenderer && reconstructionScene && reconstructionCamera) {
+        reconstructionRenderer.render(reconstructionScene, reconstructionCamera);
+      }
+    };
+    animate();
+  }
+}
+
+function disposeReconstructionObject(root) {
+  root?.traverse(object => {
+    object.geometry?.dispose?.();
+    if (Array.isArray(object.material)) object.material.forEach(material => material.dispose?.());
+    else object.material?.dispose?.();
+  });
+}
+
+async function displayReconstruction(blob) {
+  initializeReconstructionViewer();
+  reconstructionGroup.clear();
+  const objectUrl = URL.createObjectURL(blob);
+  let gltf;
+  try {
+    gltf = await new GLTFLoader().loadAsync(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+  reconstructionGroup.add(gltf.scene);
+  const bounds = new THREE.Box3().setFromObject(gltf.scene);
+  if (bounds.isEmpty()) throw new Error("The reconstruction file loaded but contains no visible 3D geometry.");
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, size.z, 0.5);
+  reconstructionControls.target.copy(center);
+  reconstructionCamera.position.set(center.x + span * 1.8, center.y + span * 1.35, center.z + span * 1.8);
+  reconstructionCamera.near = Math.max(span / 1000, 0.001);
+  reconstructionCamera.far = Math.max(span * 30, 100);
+  reconstructionCamera.updateProjectionMatrix();
+  reconstructionControls.update();
+  reconstructionResult.classList.remove("hidden");
+  requestAnimationFrame(() => {
+    const width = Math.max(reconstructionCanvas.clientWidth, 1);
+    const height = Math.max(reconstructionCanvas.clientHeight, 1);
+    reconstructionRenderer.setSize(width, height, false);
+    reconstructionCamera.aspect = width / height;
+    reconstructionCamera.updateProjectionMatrix();
+  });
+}
+
+async function reconstructCapturedRoom() {
+  if (!scan?.frames || scan.frames.length < 6) {
+    reconstructionStatus.textContent = "Capture at least 6 camera viewpoints before reconstructing.";
+    return;
+  }
+  if (reconstructionBusy) return;
+  reconstructionBusy = true;
+  reconstructionRunButton.disabled = true;
+  reconstructionCheckButton.disabled = true;
+  reconstructionResult.classList.add("hidden");
+  reconstructionEngineStatus.textContent = "Connecting…";
+  try {
+    const { baseUrl, health } = await checkReconstructionWorker(false);
+    reconstructionStatus.textContent = "Preparing " + scan.frames.length + " camera views and calibration data…";
+    const archive = buildCaptureArchive(scan);
+    const form = new FormData();
+    form.append("capture", archive, "spatial-studio-capture-bundle.zip");
+    const headers = {};
+    const apiKey = reconstructionWorkerKeyInput.value.trim();
+    if (apiKey) headers["X-API-Key"] = apiKey;
+    reconstructionStatus.textContent = "Uploading " + scan.frames.length + " views to the GPU worker…";
+    const response = await fetch(baseUrl + "/reconstruct", {
+      method: "POST",
+      headers,
+      body: form
+    });
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.detail || ("Reconstruction worker returned HTTP " + response.status + "."));
+    }
+    reconstructionStatus.textContent = "GPU inference finished · Loading the generated 3D geometry…";
+    const blob = await response.blob();
+    if (blob.size < 100 || (blob.type && !blob.type.includes("gltf") && !blob.type.includes("octet-stream"))) {
+      throw new Error("The worker response was not a valid GLB 3D file.");
+    }
+    await displayReconstruction(blob);
+    const engine = response.headers.get("X-Reconstruction-Engine") || "Depth Anything 3";
+    const frameCount = response.headers.get("X-Captured-Frames") || String(scan.frames.length);
+    const warnings = response.headers.get("X-Scan-Quality-Warnings");
+    let warningText = "";
+    if (warnings) {
+      try {
+        const parsed = JSON.parse(warnings);
+        if (Array.isArray(parsed) && parsed.length) warningText = " · Review scan warnings: " + parsed.join("; ");
+      } catch { /* Header is optional diagnostic metadata. */ }
+    }
+    reconstructionResultMeta.textContent =
+      engine + " · " + frameCount + " views processed" + warningText +
+      ". This is a visual point-cloud preview, not an editable architectural model or verified measurement.";
+    reconstructionEngineStatus.textContent = "Preview generated";
+    reconstructionStatus.textContent = "3D preview ready. Drag the model to inspect it.";
+    reconstructionResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The reconstruction could not be completed.";
+    reconstructionStatus.textContent = message;
+    reconstructionEngineStatus.textContent = "Reconstruction unavailable";
+  } finally {
+    reconstructionBusy = false;
+    reconstructionRunButton.disabled = !scan?.frames || scan.frames.length < 6;
+    reconstructionCheckButton.disabled = false;
+  }
 }
 
 function createNumberField(labelText, value, onChange, min = 0.1, max = 30) {
@@ -229,11 +471,12 @@ function updateExportState() {
   const frameCount = scan?.frames?.length || 0;
   exportButton.disabled = confirmed.length === 0;
   captureExportButton.disabled = frameCount < 1;
+  reconstructionRunButton.disabled = frameCount < 6 || reconstructionBusy;
   exportStatus.textContent = confirmed.length
     ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} will be exported as editable plane hints.`
     : "No confirmed plane hints yet. The capture bundle is the important reconstruction input.";
   captureExportStatus.textContent = frameCount
-    ? `${frameCount} camera views with ARKit poses and intrinsics are ready. A reconstruction server still needs to process this bundle.`
+    ? `${frameCount} camera views with ARKit poses and intrinsics are ready for reconstruction.`
     : "The bundle contains JPEG views, camera poses, and calibration for reconstruction.";
 }
 
@@ -478,6 +721,8 @@ async function downloadCaptureBundle() {
 
 function showScan(scanPayload) {
   scan = normalizeScanPayload(scanPayload);
+  reconstructionResult.classList.add("hidden");
+  reconstructionEngineStatus.textContent = "Worker not checked";
   if (!scan.frames.length && !scan.surfaces.length) {
     review.classList.add("hidden");
     setStatus("The scanner returned no usable camera views. Try again with slower movement and better lighting.");
@@ -510,7 +755,7 @@ function showScan(scanPayload) {
   updateExportState();
   setStatus(captureWarning
     ? `${captureWarning} Exporting the bundle only packages the images and calibration; a separate 3D reconstruction service is still required.`
-    : "Camera capture finished. Export the capture bundle to provide the images and camera calibration to a 3D reconstruction service.");
+    : "Camera capture finished. Connect your GPU worker and select Reconstruct 3D preview to generate geometry.");
   review.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -535,6 +780,18 @@ panel.querySelector("#scan-rescan").addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
 exportButton.addEventListener("click", downloadJSON);
 captureExportButton.addEventListener("click", downloadCaptureBundle);
+reconstructionCheckButton.addEventListener("click", async () => {
+  reconstructionCheckButton.disabled = true;
+  try {
+    await checkReconstructionWorker(true);
+  } catch (error) {
+    reconstructionEngineStatus.textContent = "Not connected";
+    reconstructionStatus.textContent = error instanceof Error ? error.message : "Could not connect to the worker.";
+  } finally {
+    reconstructionCheckButton.disabled = false;
+  }
+});
+reconstructionRunButton.addEventListener("click", reconstructCapturedRoom);
 
 async function checkAvailability() {
   const result = await isNativeARKitAvailable();
@@ -555,4 +812,7 @@ window.addEventListener("pagehide", () => {
   resizeObserver?.disconnect();
   controls?.dispose();
   renderer?.dispose();
+  reconstructionResizeObserver?.disconnect();
+  reconstructionControls?.dispose();
+  reconstructionRenderer?.dispose();
 });
