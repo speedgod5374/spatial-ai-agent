@@ -138,6 +138,7 @@ reconstructionPanel.innerHTML = `
     <p id="reconstruction-result-meta" class="px-3 py-2 border-t border-[#e5eae3] text-[10px] text-[#7d897f]">Preview geometry is not an editable architectural model. Check walls and dimensions before using it for layout.</p>
   </div>
 `;
+reconstructionPanel.hidden = true;
 panel.append(reconstructionPanel);
 
 viewer.prepend(panel);
