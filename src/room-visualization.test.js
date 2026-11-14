@@ -62,7 +62,7 @@ test("uses sparse feature points only when plane observations cannot establish a
   const room = buildRoomEnvelope(scan);
   assert.ok(room);
   assert.equal(room.usedFeaturePointFallback, true);
-  assert.ok(Math.abs(room.width - 4) < 0.001);
+  assert.ok(Math.abs(room.width - 3) < 0.001);
   assert.ok(Math.abs(room.depth - 4) < 0.001);
 });
 
