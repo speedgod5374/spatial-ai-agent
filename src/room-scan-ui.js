@@ -5,6 +5,7 @@ import { createRoomModelExport, getConfirmedSurfaces, normalizeScanPayload } fro
 import { buildCaptureArchive } from "./scan-archive.js";
 import { analyzeCameraPath } from "./capture-diagnostics.js";
 import { classifyPointCloudObjects } from "./object-classifier.js";
+import { buildRoomEnvelope } from "./room-visualization.js";
 import { isNativeARKitAvailable, scanRoomWithARKit } from "./native-scanner.js";
 
 const originalScanButton = document.getElementById("scan-button");
@@ -81,14 +82,23 @@ panel.innerHTML = `
       </div>
     </section>
     <details id="scan-plane-details" class="hidden rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
-      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">3D preview and optional ARKit plane hints</summary>
+      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Room visualization and scan data</summary>
     <div class="mt-3 rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
-      <div class="px-3 py-2 border-b border-[#e5eae3] flex items-center justify-between">
-        <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">ARKit plane patches · approximate geometry</span>
-        <span class="text-[10px] text-[#89938b]">Drag to orbit · pinch/scroll to zoom</span>
+      <div class="px-3 py-2 border-b border-[#e5eae3] flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">Room visualization</div>
+          <p class="text-[10px] text-[#89938b] mt-1">Switch between a transparent 3D room envelope and a top-down floor plan.</p>
+        </div>
+        <div class="inline-flex rounded-lg border border-[#e1e7df] bg-white p-1 gap-1" role="group" aria-label="Room visualization mode">
+          <button id="scan-view-3d" type="button" aria-pressed="true" class="rounded-md px-3 py-2 text-[11px] font-semibold bg-[#3f5f50] text-white">3D view</button>
+          <button id="scan-view-floorplan" type="button" aria-pressed="false" class="rounded-md px-3 py-2 text-[11px] font-semibold text-[#66736a]">Floor plan</button>
+        </div>
       </div>
-      <canvas id="scan-model-canvas" class="block w-full h-[300px]"></canvas>
-      <div class="px-3 py-2 border-t border-[#e5eae3] text-[10px] text-[#7f8a81]">Green = confirmed · Amber = not yet confirmed · Only confirmed surfaces are included in the exported model.</div>
+      <div class="relative">
+        <canvas id="scan-model-canvas" class="block w-full h-[300px]"></canvas>
+        <svg id="scan-floorplan-canvas" class="hidden w-full h-[300px] bg-[#f7f8f5]" viewBox="0 0 800 520" role="img" aria-label="Approximate top-down room floor plan"></svg>
+      </div>
+      <div id="scan-model-caption" class="px-3 py-2 border-t border-[#e5eae3] text-[10px] leading-relaxed text-[#7f8a81]">The room envelope is estimated from observed ARKit surfaces; it is not a complete room mesh.</div>
     </div>
     <div id="scan-surfaces" class="space-y-2 mt-3"></div>
     </details>
@@ -156,6 +166,11 @@ const frameStrip = panel.querySelector("#scan-frame-strip");
 const detectedObjectList = panel.querySelector("#scan-object-list");
 const detectedObjectCount = panel.querySelector("#scan-object-count");
 const planeDetails = panel.querySelector("#scan-plane-details");
+const scanModelCanvas = panel.querySelector("#scan-model-canvas");
+const floorPlanSvg = panel.querySelector("#scan-floorplan-canvas");
+const scanView3DButton = panel.querySelector("#scan-view-3d");
+const scanViewFloorPlanButton = panel.querySelector("#scan-view-floorplan");
+const scanModelCaption = panel.querySelector("#scan-model-caption");
 const startButton = panel.querySelector("#scan-start");
 const scanButton = document.getElementById("scan-button");
 
@@ -186,6 +201,8 @@ let controls = null;
 let modelGroup = null;
 let animationStarted = false;
 let resizeObserver = null;
+let scanViewMode = "3d";
+let roomEnvelope = null;
 
 let reconstructionBusy = false;
 let reconstructionRenderer = null;
@@ -474,7 +491,7 @@ function renderSurfaceList() {
     const checks = document.createElement("div");
     checks.className = "flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#eef1ed] pt-2";
     checks.append(
-      createCheckbox("Show in preview", surface.included, value => { surface.included = value; updateModel(); }),
+      createCheckbox("Include in room envelope", surface.included, value => { surface.included = value; updateModel(); }),
       createCheckbox("I reviewed this surface", surface.confirmed, value => {
         surface.confirmed = value;
         updateModel();
@@ -616,6 +633,147 @@ function renderCapturedFrames() {
   });
 }
 
+function svgNode(name, attributes = {}, text = "") {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+  if (text) node.textContent = text;
+  return node;
+}
+
+function updateFloorPlan() {
+  if (!floorPlanSvg) return;
+  floorPlanSvg.replaceChildren();
+  floorPlanSvg.setAttribute("viewBox", "0 0 800 520");
+
+  const room = roomEnvelope || buildRoomEnvelope(scan);
+  if (!room) {
+    floorPlanSvg.append(
+      svgNode("rect", { x: 0, y: 0, width: 800, height: 520, fill: "#f7f8f5" }),
+      svgNode("text", {
+        x: 400, y: 238, "text-anchor": "middle",
+        fill: "#526257", "font-size": 20, "font-weight": 600
+      }, "More scan coverage needed"),
+      svgNode("text", {
+        x: 400, y: 272, "text-anchor": "middle",
+        fill: "#879189", "font-size": 13
+      }, "Capture floor area and walls from more than one side.")
+    );
+    return;
+  }
+
+  const viewWidth = 800;
+  const viewHeight = 520;
+  const padding = 92;
+  const scale = Math.min(
+    (viewWidth - padding * 2) / Math.max(room.width, 0.1),
+    (viewHeight - padding * 2) / Math.max(room.depth, 0.1)
+  );
+  const drawnWidth = room.width * scale;
+  const drawnDepth = room.depth * scale;
+  const left = (viewWidth - drawnWidth) / 2;
+  const top = (viewHeight - drawnDepth) / 2;
+  const mapX = x => left + (x - room.min.x) * scale;
+  const mapZ = z => top + (room.max.z - z) * scale;
+
+  floorPlanSvg.append(
+    svgNode("rect", { x: 0, y: 0, width: viewWidth, height: viewHeight, fill: "#f7f8f5" }),
+    svgNode("text", {
+      x: 28, y: 34, fill: "#526257", "font-size": 14, "font-weight": 700
+    }, "TOP VIEW"),
+    svgNode("text", {
+      x: 28, y: 54, fill: "#89938b", "font-size": 11
+    }, "Estimated footprint · dimensions in meters")
+  );
+
+  const gridStep = Math.max(0.5, Math.ceil(Math.max(room.width, room.depth) / 10 * 2) / 2);
+  for (let x = Math.ceil(room.min.x / gridStep) * gridStep; x <= room.max.x + 0.001; x += gridStep) {
+    const px = mapX(x);
+    floorPlanSvg.append(svgNode("line", {
+      x1: px, y1: top, x2: px, y2: top + drawnDepth,
+      stroke: "#e4eae2", "stroke-width": 1
+    }));
+  }
+  for (let z = Math.ceil(room.min.z / gridStep) * gridStep; z <= room.max.z + 0.001; z += gridStep) {
+    const py = mapZ(z);
+    floorPlanSvg.append(svgNode("line", {
+      x1: left, y1: py, x2: left + drawnWidth, y2: py,
+      stroke: "#e4eae2", "stroke-width": 1
+    }));
+  }
+
+  floorPlanSvg.append(svgNode("rect", {
+    x: left, y: top, width: drawnWidth, height: drawnDepth,
+    fill: "#edf2ec", stroke: "#aab8ab", "stroke-width": 2,
+    "stroke-dasharray": "7 5"
+  }));
+
+  room.wallSegments.forEach(segment => {
+    floorPlanSvg.append(svgNode("line", {
+      x1: mapX(segment.start.x), y1: mapZ(segment.start.z),
+      x2: mapX(segment.end.x), y2: mapZ(segment.end.z),
+      stroke: "#526b59", "stroke-width": 9, "stroke-linecap": "round"
+    }));
+  });
+
+  const objectColors = {
+    Table: "#b78b53",
+    Chair: "#668ca7",
+    Sofa: "#789078",
+    Bed: "#9580a3",
+    Cabinet: "#7d8e90",
+    Object: "#92978d"
+  };
+  (scan?.detectedObjects || []).forEach((candidate, index) => {
+    const dims = candidate.dimensions || {};
+    const center = candidate.center || [];
+    const width = Number(dims.width);
+    const depth = Number(dims.depth);
+    if (!Number.isFinite(width) || !Number.isFinite(depth) || !Number.isFinite(Number(center[0])) || !Number.isFinite(Number(center[2]))) return;
+    const rectWidth = Math.max(5, width * scale);
+    const rectDepth = Math.max(5, depth * scale);
+    const x = mapX(Number(center[0])) - rectWidth / 2;
+    const y = mapZ(Number(center[2])) - rectDepth / 2;
+    const color = objectColors[candidate.category] || objectColors.Object;
+    floorPlanSvg.append(
+      svgNode("rect", {
+        x, y, width: rectWidth, height: rectDepth, rx: 3,
+        fill: color, "fill-opacity": 0.2, stroke: color, "stroke-width": 2
+      }),
+      svgNode("text", {
+        x: x + rectWidth / 2, y: y + rectDepth / 2 + 4,
+        "text-anchor": "middle", fill: "#344139", "font-size": 10, "font-weight": 600
+      }, String(index + 1))
+    );
+  });
+
+  floorPlanSvg.append(
+    svgNode("text", {
+      x: 28, y: 486, fill: "#7d897f", "font-size": 11
+    }, room.assumedHeight ? "Room height is illustrative; ARKit did not establish full ceiling height." : "Furniture outlines are rough shape candidates; review their dimensions."),
+    svgNode("text", {
+      x: 772, y: 486, "text-anchor": "end", fill: "#526257", "font-size": 12, "font-weight": 700
+    }, room.width.toFixed(1) + " m × " + room.depth.toFixed(1) + " m")
+  );
+}
+
+function setScanViewMode(mode) {
+  scanViewMode = mode === "floorplan" ? "floorplan" : "3d";
+  const isFloorPlan = scanViewMode === "floorplan";
+  scanModelCanvas.hidden = isFloorPlan;
+  floorPlanSvg.hidden = !isFloorPlan;
+  scanView3DButton.setAttribute("aria-pressed", String(!isFloorPlan));
+  scanViewFloorPlanButton.setAttribute("aria-pressed", String(isFloorPlan));
+  scanView3DButton.className = "rounded-md px-3 py-2 text-[11px] font-semibold " +
+    (!isFloorPlan ? "bg-[#3f5f50] text-white" : "text-[#66736a]");
+  scanViewFloorPlanButton.className = "rounded-md px-3 py-2 text-[11px] font-semibold " +
+    (isFloorPlan ? "bg-[#3f5f50] text-white" : "text-[#66736a]");
+  if (isFloorPlan) {
+    updateFloorPlan();
+  } else {
+    requestAnimationFrame(resizeRenderer);
+  }
+}
+
 function initializeRenderer() {
   if (renderer) return;
   const canvas = panel.querySelector("#scan-model-canvas");
@@ -696,36 +854,66 @@ function updateModel(fit = false) {
   initializeRenderer();
   clearModel();
 
-  scan.surfaces.forEach(surface => {
-    if (!surface.included || surface.role === "ignore") return;
-    const planeDepth = surface.alignment === "horizontal" ? surface.depth : surface.height;
-    if (!(surface.width > 0) || !(planeDepth > 0)) return;
-
-    const geometry = new THREE.PlaneGeometry(surface.width, planeDepth);
-    const confirmed = surface.confirmed;
-    const color = confirmed ? 0x6f9c78 : 0xc49a5d;
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.8,
-      transparent: true,
-      opacity: confirmed ? 0.72 : 0.3,
-      side: THREE.DoubleSide
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    const anchorTransform = new THREE.Matrix4().fromArray(surface.transform);
-    const orientation = new THREE.Quaternion().setFromRotationMatrix(anchorTransform);
-    if (surface.alignment === "horizontal") {
-      orientation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
-    }
-    mesh.position.set(surface.center.x, surface.center.y, surface.center.z);
-    mesh.quaternion.copy(orientation);
-    const outline = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geometry),
-      new THREE.LineBasicMaterial({ color: confirmed ? 0x3d704b : 0xa77a3e })
+  // Show one estimated room volume instead of every individual ARKit plane patch.
+  // The original plane observations remain available below for review and export.
+  roomEnvelope = buildRoomEnvelope(scan);
+  if (roomEnvelope) {
+    const width = Math.max(roomEnvelope.width, 0.08);
+    const height = Math.max(roomEnvelope.height, 0.08);
+    const depth = Math.max(roomEnvelope.depth, 0.08);
+    const center = new THREE.Vector3(
+      (roomEnvelope.min.x + roomEnvelope.max.x) / 2,
+      (roomEnvelope.min.y + roomEnvelope.max.y) / 2,
+      (roomEnvelope.min.z + roomEnvelope.max.z) / 2
     );
-    mesh.add(outline);
-    modelGroup.add(mesh);
-  });
+    const roomGeometry = new THREE.BoxGeometry(width, height, depth);
+    const roomFill = new THREE.Mesh(
+      roomGeometry,
+      new THREE.MeshBasicMaterial({
+        color: 0x8fae98,
+        transparent: true,
+        opacity: 0.075,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    roomFill.position.copy(center);
+    roomFill.name = "estimated-transparent-room-envelope";
+    modelGroup.add(roomFill);
+
+    const roomEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(roomGeometry),
+      new THREE.LineBasicMaterial({ color: 0x64816b, transparent: true, opacity: 0.9 })
+    );
+    roomEdges.position.copy(center);
+    modelGroup.add(roomEdges);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      new THREE.MeshBasicMaterial({
+        color: 0xb9c9b9,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(center.x, roomEnvelope.floorY + 0.004, center.z);
+    modelGroup.add(floor);
+    scanModelCaption.textContent =
+      "Estimated room envelope · " + roomEnvelope.width.toFixed(1) + " × " +
+      roomEnvelope.depth.toFixed(1) + " × " + roomEnvelope.height.toFixed(1) + " m. " +
+      (roomEnvelope.assumedHeight ? "Height is illustrative because a full wall-to-ceiling extent was not detected. " : "") +
+      "This is a bounding volume from observed ARKit planes, not a complete reconstructed mesh.";
+  } else {
+    scanModelCaption.textContent =
+      "There is not enough floor-and-wall coverage to estimate a room volume yet. Continue scanning from more sides; the individual ARKit observations remain available below.";
+  }
+  scanViewFloorPlanButton.disabled = !roomEnvelope;
+  scanViewFloorPlanButton.title = roomEnvelope ? "Show top-down floor plan" : "More floor and wall coverage is needed first";
+  updateFloorPlan();
+  if (scanViewMode === "floorplan") setScanViewMode("floorplan");
 
   // ARKit rawFeaturePoints are world-space visual landmarks collected on-device.
   // Render them as a sparse point cloud; do not present them as a dense room mesh.
@@ -740,8 +928,10 @@ function updateModel(fit = false) {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
       color: 0x39765a,
-      size: 0.025,
-      sizeAttenuation: true
+      size: 0.012,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.38
     });
     const cloud = new THREE.Points(geometry, material);
     cloud.name = "on-device-arkit-feature-cloud";
@@ -786,6 +976,7 @@ function updateModel(fit = false) {
   });
 
   if (fit) fitModelView();
+  updateFloorPlan();
   updateExportState();
 }
 
@@ -914,6 +1105,8 @@ async function startScan() {
 startButton.addEventListener("click", startScan);
 panel.querySelector("#scan-rescan").addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
+scanView3DButton.addEventListener("click", () => setScanViewMode("3d"));
+scanViewFloorPlanButton.addEventListener("click", () => setScanViewMode("floorplan"));
 exportButton.addEventListener("click", downloadJSON);
 captureExportButton.addEventListener("click", downloadCaptureBundle);
 reconstructionCheckButton.addEventListener("click", async () => {
