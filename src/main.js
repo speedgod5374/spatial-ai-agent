@@ -438,24 +438,26 @@ $('import-input').addEventListener('change', async event => {
       state.room.height = dims.height || state.room.height;
       buildRoom();
     }
-    const elements = room.elements || parsed.elements || [];
-    const recognized = elements.filter(el => el.kind === 'object' || el.category);
+    const importedItems = parsed.furniture || room.furniture || room.elements || parsed.elements || [];
     state.furniture = [];
-    recognized.forEach(el => {
-      const d = el.dimensions || [1, 0.8, 0.8];
+    importedItems.forEach(el => {
+      const dimensions = el.dimensions || el.size || [];
       const item = {
         id: crypto.randomUUID(),
-        name: el.category || 'Scanned object',
-        type: 'scanned',
-        w: d[0] || 1,
-        h: d[1] || 0.8,
-        d: d[2] || 0.8,
-        x: 0,
-        z: 0,
-        rotation: 0,
-        color: 0x8c9baa
+        name: el.name || el.category || el.label || 'Scanned object',
+        type: el.type || el.category || 'scanned',
+        w: Number(el.w ?? el.width ?? dimensions.width ?? dimensions[0] ?? 1),
+        h: Number(el.h ?? el.height ?? dimensions.height ?? dimensions[1] ?? 0.8),
+        d: Number(el.d ?? el.depth ?? dimensions.depth ?? dimensions[2] ?? 0.8),
+        x: Number(el.x ?? el.position?.x ?? 0),
+        z: Number(el.z ?? el.position?.z ?? 0),
+        rotation: Number(el.rotation ?? 0),
+        color: Number(el.color ?? 0x8c9baa),
+        price: Number(el.price ?? 0)
       };
-      const position = findFurniturePlacement(item, state.room, state.furniture);
+      if (![item.w, item.h, item.d, item.x, item.z, item.rotation].every(Number.isFinite) ||
+          item.w <= 0 || item.h <= 0 || item.d <= 0) return;
+      const position = findFurniturePlacement(item, state.room, state.furniture, { x: item.x, z: item.z });
       if (position) {
         Object.assign(item, position);
         state.furniture.push(item);
@@ -476,17 +478,32 @@ $('import-input').addEventListener('change', async event => {
 $('export-button').addEventListener('click', () => {
   const payload = {
     schemaVersion: 2,
-    source: 'Spatial Studio web planner',
-    room: state.room,
+    source: 'Spatial Studio',
+    room: { ...state.room },
     furniture: state.furniture.map(item => ({
-      ...item,
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      w: item.w,
+      h: item.h,
+      d: item.d,
+      x: item.x,
+      z: item.z,
+      rotation: item.rotation || 0,
+      color: item.color,
+      price: item.price || 0,
       footprint: getFurnitureFootprint(item)
     }))
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a');
-  a.href = url; a.download = 'spatial-studio-room.json'; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url;
+  a.download = 'spatial-studio-room.json';
+  a.style.display = 'none';
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 });
 
 buildPanels();
