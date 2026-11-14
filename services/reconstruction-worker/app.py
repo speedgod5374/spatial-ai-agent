@@ -20,6 +20,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from scan_quality import analyze_camera_poses
+from depth_quality import analyze_depth_predictions
 
 from geometry import (
     arkit_camera_to_world_to_opencv_world_to_camera,
@@ -94,7 +95,7 @@ def run_reconstruction(
     output_dir: Path,
 ) -> None:
     with MODEL_LOCK:
-        model.inference(
+        return model.inference(
             image=image_paths,
             extrinsics=extrinsics,
             intrinsics=intrinsics,
@@ -266,7 +267,7 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
         ])
 
         model = await run_in_threadpool(load_model)
-        await run_in_threadpool(
+        prediction = await run_in_threadpool(
             run_reconstruction,
             model,
             image_paths,
@@ -283,6 +284,11 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
         if result_path.stat().st_size < 100:
             raise HTTPException(status_code=500, detail="The generated GLB file is unexpectedly small.")
 
+        depth_quality = analyze_depth_predictions(
+            getattr(prediction, "depth", None),
+            getattr(prediction, "conf", None),
+        )
+
         response_headers = {
             "X-Reconstruction-Engine": MODEL_ID,
             "X-Captured-Frames": str(len(image_paths)),
@@ -290,6 +296,9 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
             "X-Camera-Span-X-M": str(camera_path["horizontalSpanXMeters"]),
             "X-Camera-Span-Z-M": str(camera_path["horizontalSpanZMeters"]),
             "X-Scan-Quality-Warnings": json.dumps(camera_path["warnings"], separators=(",", ":")),
+            "X-Depth-Quality": json.dumps(depth_quality, separators=(",", ":")),
+            "X-Depth-Quality-Warnings": json.dumps(depth_quality["warnings"], separators=(",", ":")),
+            "X-Depth-Valid-Fraction": str(depth_quality["validDepthFractionMedian"]),
             "X-Alignment-Mode": "ARKit camera poses aligned to DA3 reconstruction scale",
             "X-Depth-Confidence": "See model output; review geometry before measuring furniture fit.",
         }
