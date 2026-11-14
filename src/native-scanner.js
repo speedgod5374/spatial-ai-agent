@@ -1,20 +1,35 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
-const SpatialScanner = registerPlugin('SpatialScanner');
+const SpatialScanner = registerPlugin("SpatialScanner");
 
-/**
- * Starts the native ARKit scanner. The browser build intentionally does not
- * fall back to getUserMedia because a camera preview is not a room scan.
- */
-export async function scanRoomWithARKit() {
+export async function isNativeARKitAvailable() {
   if (!Capacitor.isNativePlatform()) {
-    throw new Error('ARKit scanning is only available in the installed iOS app. A browser camera preview cannot create a 3D room scan.');
+    return {
+      available: false,
+      reason: "Open Spatial Studio in its installed iOS app. Safari and GitHub Pages cannot call ARKit."
+    };
   }
 
-  const result = await SpatialScanner.startScan();
-  if (!Array.isArray(result?.planes) || result.planes.length === 0) {
-    throw new Error('No floor or wall surfaces were detected. Try scanning again with better lighting and slower movement.');
+  try {
+    const result = await SpatialScanner.isSupported();
+    return result?.supported
+      ? { available: true, reason: "" }
+      : { available: false, reason: "ARKit world tracking is not supported on this device." };
+  } catch {
+    return {
+      available: false,
+      reason: "The native SpatialScanner plugin is not registered. Follow docs/IOS-AR-SETUP.md in Xcode."
+    };
   }
+}
 
+export async function scanRoomWithARKit() {
+  const availability = await isNativeARKitAvailable();
+  if (!availability.available) throw new Error(availability.reason);
+
+  const result = await SpatialScanner.scanRoom();
+  if (!Array.isArray(result?.planes)) {
+    throw new Error("The native scanner returned an invalid result. Please try again.");
+  }
   return result;
 }
