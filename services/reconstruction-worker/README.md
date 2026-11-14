@@ -40,14 +40,27 @@ From the repository root:
 
 ```bash
 export PYTHONPATH="$PWD/services/reconstruction-worker"
-export RECONSTRUCTION_API_KEY="replace-with-a-long-random-secret"
-uvicorn app:app --app-dir services/reconstruction-worker --host 127.0.0.1 --port 8000
+export RECONSTRUCTION_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+uvicorn app:app --app-dir services/reconstruction-worker --host 0.0.0.0 --port 8000
 ```
 
 Check the worker:
 
 ```bash
 curl http://127.0.0.1:8000/health
+```
+
+### Connect the iPhone app over your local network
+
+1. Run the worker on the computer with the NVIDIA GPU. Keep the terminal open while scanning.
+2. Find that computer's local-network IP address with `hostname -I` (Linux), or use its local Bonjour hostname if available.
+3. Keep the iPhone and computer on the same Wi-Fi network. Make sure the computer firewall allows inbound TCP connections on port 8000 from your private network.
+4. In the installed iPhone app, finish a scan, open **Connect reconstruction worker**, and enter `http://COMPUTER-LAN-IP:8000` plus the API key from the worker terminal environment.
+5. Tap **Check worker connection**, then **Reconstruct 3D preview**. The app sends the ZIP only after this explicit tap and displays the returned GLB.
+
+The API key is entered into the app for the current session only; the app does not store it. The worker enables CORS for the Capacitor app origin and the project's GitHub Pages origin. For iOS local HTTP access, add `NSLocalNetworkUsageDescription` and `NSAppTransportSecurity.NSAllowsLocalNetworking = YES` to the iOS app target as described in `native/ios/InfoPlist-additions.txt`.
+
+Do not expose this development worker directly to the public internet. For production, put it behind an authenticated backend with per-user access and short-lived permissions.
 ```
 
 Submit a capture bundle:
@@ -59,7 +72,7 @@ curl -X POST http://127.0.0.1:8000/reconstruct \
   --output spatial-studio-room-preview.glb
 ```
 
-The API key is required for `/reconstruct`; if it is not configured, the endpoint stays disabled. Do not put this secret in a Vite `VITE_*` variable or ship it inside the iOS app. A production app should call this worker through an authenticated backend that issues short-lived permissions and handles user consent.
+The API key is required for `/reconstruct`; if it is not configured, the endpoint stays disabled. Do not put this secret in a Vite `VITE_*` variable or commit it to the repository. The iOS app asks you to enter it for the current session. A production app should call this worker through an authenticated backend that issues short-lived permissions and handles user consent.
 
 ## API
 
