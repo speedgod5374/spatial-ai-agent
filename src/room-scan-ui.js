@@ -760,7 +760,9 @@ function setScanViewMode(mode) {
   scanViewMode = mode === "floorplan" ? "floorplan" : "3d";
   const isFloorPlan = scanViewMode === "floorplan";
   scanModelCanvas.hidden = isFloorPlan;
+  scanModelCanvas.classList.toggle("hidden", isFloorPlan);
   floorPlanSvg.hidden = !isFloorPlan;
+  floorPlanSvg.classList.toggle("hidden", !isFloorPlan);
   scanView3DButton.setAttribute("aria-pressed", String(!isFloorPlan));
   scanViewFloorPlanButton.setAttribute("aria-pressed", String(isFloorPlan));
   scanView3DButton.className = "rounded-md px-3 py-2 text-[11px] font-semibold " +
