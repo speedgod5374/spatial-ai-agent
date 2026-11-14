@@ -179,7 +179,7 @@ function setStatus(message) {
 }
 
 function getWorkerBaseUrl() {
-  const raw = reconstructionWorkerUrlInput.value.trim().replace(/\\/+$/, "");
+  const raw = reconstructionWorkerUrlInput.value.trim().replace(/\//+$/, "");
   if (!raw) throw new Error("Enter your reconstruction worker address first.");
   let parsed;
   try {
