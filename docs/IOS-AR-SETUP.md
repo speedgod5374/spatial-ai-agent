@@ -49,7 +49,7 @@ The web version can preview/import/export room data but cannot start native ARKi
 
 ## Create the native iOS wrapper
 
-A Mac with Xcode and a physical iPhone are required. This repository's current development environment is Linux and does not contain Xcode, so native compilation and device behavior have not been verified here.
+A Mac with Xcode and a physical iPhone are required. GitHub Actions validates the web app and reconstruction-worker code, but Swift compilation and on-device ARKit behavior must be verified in Xcode on your Mac and iPhone.
 
 On the Mac, from the repository root:
 
