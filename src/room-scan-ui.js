@@ -22,16 +22,15 @@ panel.className = "material-card col-span-full p-4 space-y-4";
 panel.innerHTML = `
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
-      <div class="text-[11px] uppercase tracking-wider font-semibold text-[#477151]">Room capture · camera-based 3D</div>
-      <h2 class="text-base font-semibold mt-1">Guided multi-view room capture</h2>
-      <p class="text-xs text-[#5f6368] leading-relaxed mt-1 max-w-2xl">The iPhone records overlapping camera views with ARKit camera positions and calibration. This creates the input for 3D reconstruction; the image capture itself is not yet a finished room mesh.</p>
+      <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">Room scan</div>
+      <h2 class="text-base font-semibold mt-1">Capture your space</h2>
+      <p class="text-xs text-[#778279] mt-1">Create a set of room views for 3D reconstruction.</p>
     </div>
     <span id="scan-availability" class="text-[10px] rounded-full px-3 py-1.5 bg-[#f1f3f4] text-[#5f6368]">Checking device…</span>
   </div>
   <div class="grid sm:grid-cols-[1fr_auto] gap-3 items-center rounded-xl bg-[#f7f8f6] border border-[#e8ece7] p-3">
     <div class="text-xs text-[#5f6368] leading-relaxed">
-      <strong class="text-[#344139]">Scan guidance:</strong> start near the doorway, then slowly walk around the room. Move at least 20–25 cm between captured views; turning in place alone does not add a 3D viewpoint. Keep adjacent views overlapping, sweep across every wall, and revisit areas from another angle. Good lighting and visible room details help tracking.
-      <div class="mt-1 text-[10px] text-[#89938b]">Privacy: selected still frames stay on-device and are not uploaded automatically.</div>
+      <strong class="text-[#344139]">For best results:</strong> move slowly around the room, changing position between views. Keep walls and furniture visible, with good lighting.
     </div>
     <button id="scan-start" type="button" class="bg-[#214b39] text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px] whitespace-nowrap">Start room scan</button>
   </div>
@@ -53,7 +52,7 @@ panel.innerHTML = `
         <span id="scan-direction-count" class="text-[10px] text-[#647067]">Not available</span>
       </div>
       <div id="scan-direction-indicator" class="grid grid-cols-8 gap-1.5" role="img" aria-label="Horizontal viewpoint direction indicators"></div>
-      <p class="text-[10px] text-[#89938b]">These indicators show which headings were sampled from the starting direction. They do not measure full room coverage.</p>
+      <p class="text-[10px] text-[#89938b]">Direction samples are not a room-coverage score.</p>
     </div>
     <div class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -64,7 +63,7 @@ panel.innerHTML = `
         <button id="scan-export-capture" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export capture bundle (.zip)</button>
       </div>
       <div id="scan-frame-strip" class="flex gap-2 overflow-x-auto py-1"></div>
-      <p id="scan-capture-export-status" class="text-[10px] text-[#7d897f]">The bundle contains JPEG views, camera poses, and calibration for reconstruction.</p>
+      <p id="scan-capture-export-status" class="text-[10px] text-[#7d897f]">Camera views and calibration data.</p>
     </div>
     <details id="scan-plane-details" class="hidden rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
       <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Optional ARKit plane hints (not a 3D room reconstruction)</summary>
@@ -238,6 +237,10 @@ function updateExportState() {
     : "The bundle contains JPEG views, camera poses, and calibration for reconstruction.";
 }
 
+function sampledDirectionLabel(currentScan) {
+  return currentScan?.captureQuality ? `${currentScan.directionBuckets.length}/8 directions` : "directions unavailable";
+}
+
 function renderCapturedFrames() {
   frameStrip.replaceChildren();
   const frames = scan?.frames || [];
@@ -248,11 +251,11 @@ function renderCapturedFrames() {
     : "direction metrics unavailable";
   const cameraPath = analyzeCameraPath(frames);
   const pathSummary = cameraPath.validPoseCount >= 2
-    ? `camera path ${cameraPath.pathLengthMeters.toFixed(1)} m · horizontal span ${cameraPath.horizontalSpanXMeters.toFixed(1)} × ${cameraPath.horizontalSpanZMeters.toFixed(1)} m (path only)`
-    : "camera path unavailable";
+    ? `Path ${cameraPath.pathLengthMeters.toFixed(1)} m · span ${cameraPath.horizontalSpanXMeters.toFixed(1)} × ${cameraPath.horizontalSpanZMeters.toFixed(1)} m`
+    : "Path unavailable";
   captureSummary.textContent = frames.length
-    ? `${frames.length} viewpoints · ${directionSummary} · ${pathSummary} · ${darkSkipped} dark views skipped · ${lowDetail} low-detail views flagged.`
-    : "No camera views were returned by the scanner.";
+    ? `${frames.length} views · ${sampledDirectionLabel(scan)} · ${pathSummary}${darkSkipped ? ` · ${darkSkipped} dark skipped` : ""}${lowDetail ? ` · ${lowDetail} low detail` : ""}`
+    : "No camera views captured.";
 
   const directionIndicator = panel.querySelector("#scan-direction-indicator");
   const directionCount = panel.querySelector("#scan-direction-count");
@@ -493,7 +496,7 @@ function showScan(scanPayload) {
     ? `Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas.`
     : null;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.frames.length} camera viewpoints · ${directionSummary} · ${scan.surfaces.length} optional plane hints (${floors} horizontal, ${walls} vertical). A 3D room mesh has not been generated yet.`;
+    `${scan.frames.length} views · ${scan.surfaces.length} surface hints (${floors} horizontal, ${walls} vertical)`;
   review.classList.remove("hidden");
   renderCapturedFrames();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
