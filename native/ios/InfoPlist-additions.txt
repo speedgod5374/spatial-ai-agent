@@ -2,3 +2,11 @@ Add this key to the iOS app target's Info.plist:
 
 NSCameraUsageDescription
 Spatial Studio uses the camera for on-device ARKit tracking and room-surface detection. Camera frames are not uploaded by this prototype.
+
+Add these keys as well so the installed app can contact a reconstruction worker on the same local network over HTTP during development:
+
+NSLocalNetworkUsageDescription
+Spatial Studio connects to your computer on your local network when you choose to reconstruct a room scan.
+
+NSAppTransportSecurity
+NSAllowsLocalNetworking = YES
