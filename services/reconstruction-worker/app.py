@@ -93,7 +93,7 @@ def run_reconstruction(
     extrinsics: np.ndarray,
     intrinsics: np.ndarray,
     output_dir: Path,
-) -> None:
+) -> Any:
     with MODEL_LOCK:
         return model.inference(
             image=image_paths,
