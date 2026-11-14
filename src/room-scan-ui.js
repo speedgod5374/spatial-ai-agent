@@ -95,10 +95,10 @@ reconstructionPanel.innerHTML = `
       <h3 class="text-sm font-semibold mt-1">Build a 3D preview</h3>
       <p class="text-[11px] text-[#778279] mt-1">Send the captured views to your GPU worker to generate a point-cloud preview.</p>
     </div>
-    <span id="reconstruction-engine-status" class="text-[10px] bg-[#f1f3f4] text-[#667067] px-2.5 py-1.5 rounded-full">Worker not checked</span>
+    <span id="reconstruction-engine-status" class="text-[10px] bg-[#f1f3f4] text-[#667067] px-2.5 py-1.5 rounded-full">On-device capture</span>
   </div>
   <details id="reconstruction-settings" class="rounded-lg border border-[#e8ece7] bg-[#f8faf7] p-3">
-    <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Connect reconstruction worker</summary>
+    <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Advanced reconstruction service (not used)</summary>
     <div class="grid gap-2 mt-3">
       <label class="text-[10px] text-[#69766d]">Worker address
         <input id="reconstruction-worker-url" type="url" inputmode="url" autocomplete="url" placeholder="http://your-computer.local:8000" class="mt-1 w-full border border-[#dfe5de] bg-white p-2.5 text-xs rounded-md">
@@ -106,14 +106,14 @@ reconstructionPanel.innerHTML = `
       <label class="text-[10px] text-[#69766d]">Worker API key
         <input id="reconstruction-worker-key" type="password" autocomplete="off" placeholder="Enter the key configured on your worker" class="mt-1 w-full border border-[#dfe5de] bg-white p-2.5 text-xs rounded-md">
       </label>
-      <p class="text-[10px] leading-relaxed text-[#818c82]">Use the computer's local network address and keep both devices on the same Wi-Fi. The key stays in this app session and is not saved. Scan images are sent only after you tap Reconstruct.</p>
+      <p class="text-[10px] leading-relaxed text-[#818c82]">This legacy remote worker is disabled in the current on-device workflow.</p>
       <button id="reconstruction-check-worker" type="button" class="border border-[#dce3dc] bg-white rounded-md px-3 py-2.5 text-xs font-semibold text-[#526257]">Check worker connection</button>
     </div>
   </details>
   <div class="flex flex-wrap items-center gap-2">
     <button id="reconstruction-run" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Reconstruct 3D preview</button>
     <span id="reconstruction-working" style="display:none" class="items-center gap-2 text-[11px] text-[#477151]"><span class="h-2 w-2 rounded-full bg-[#477151] animate-pulse"></span>Processing scan</span>
-    <span id="reconstruction-status" class="text-[11px] text-[#7a857d]" role="status" aria-live="polite">Capture at least 6 viewpoints, then connect a GPU worker.</span>
+    <span id="reconstruction-status" class="text-[11px] text-[#7a857d]" role="status" aria-live="polite">The iPhone builds a sparse 3D feature preview locally. This is not yet a dense room mesh.</span>
   </div>
   <div id="reconstruction-result" class="hidden rounded-lg border border-[#e5eae3] overflow-hidden">
     <div class="px-3 py-2 flex items-center justify-between gap-2 border-b border-[#e5eae3] bg-[#f8faf7]">
@@ -151,8 +151,11 @@ const reconstructionWorking = panel.querySelector("#reconstruction-working");
 const reconstructionEngineStatus = panel.querySelector("#reconstruction-engine-status");
 const reconstructionResult = panel.querySelector("#reconstruction-result");
 const reconstructionResultMeta = panel.querySelector("#reconstruction-result-meta");
+panel.querySelector("#reconstruction-settings").hidden = true;
+reconstructionCheckButton.hidden = true;
+reconstructionRunButton.hidden = true;
 const reconstructionCanvas = panel.querySelector("#reconstruction-canvas");
-const savedWorkerUrl = localStorage.getItem("spatialStudio.reconstructionWorkerUrl");
+const savedWorkerUrl = "";
 if (savedWorkerUrl) reconstructionWorkerUrlInput.value = savedWorkerUrl;
 reconstructionWorkerUrlInput.addEventListener("change", () => {
   localStorage.setItem("spatialStudio.reconstructionWorkerUrl", reconstructionWorkerUrlInput.value.trim());
@@ -480,10 +483,10 @@ function updateExportState() {
   captureExportButton.disabled = frameCount < 1;
   reconstructionRunButton.disabled = frameCount < 6 || reconstructionBusy;
   exportStatus.textContent = confirmed.length
-    ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} will be exported as editable plane hints.`
-    : "No confirmed plane hints yet. The capture bundle is the important reconstruction input.";
+    ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} and the local point cloud will be exported.`
+    : `${scan?.pointCloud?.length || 0} local feature points and the capture bundle are available; no plane hints confirmed.`;
   captureExportStatus.textContent = frameCount
-    ? `${frameCount} camera views with ARKit poses and intrinsics are ready for reconstruction.`
+    ? `${frameCount} camera views, ARKit poses, intrinsics, and local feature points are ready for export.`
     : "The bundle contains JPEG views, camera poses, and calibration for reconstruction.";
 }
 
@@ -656,6 +659,27 @@ function updateModel(fit = false) {
     modelGroup.add(mesh);
   });
 
+  // ARKit rawFeaturePoints are world-space visual landmarks collected on-device.
+  // Render them as a sparse point cloud; do not present them as a dense room mesh.
+  if (Array.isArray(scan.pointCloud) && scan.pointCloud.length) {
+    const positions = new Float32Array(scan.pointCloud.length * 3);
+    scan.pointCloud.forEach((point, index) => {
+      positions[index * 3] = point[0];
+      positions[index * 3 + 1] = point[1];
+      positions[index * 3 + 2] = point[2];
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+      color: 0x39765a,
+      size: 0.025,
+      sizeAttenuation: true
+    });
+    const cloud = new THREE.Points(geometry, material);
+    cloud.name = "on-device-arkit-feature-cloud";
+    modelGroup.add(cloud);
+  }
+
   if (fit) fitModelView();
   updateExportState();
 }
@@ -730,7 +754,7 @@ function showScan(scanPayload) {
   scan = normalizeScanPayload(scanPayload);
   reconstructionResult.classList.add("hidden");
   reconstructionEngineStatus.textContent = "Worker not checked";
-  if (!scan.frames.length && !scan.surfaces.length) {
+  if (!scan.frames.length && !scan.surfaces.length && !scan.pointCloud.length) {
     review.classList.add("hidden");
     setStatus("The scanner returned no usable camera views. Try again with slower movement and better lighting.");
     return;
@@ -748,21 +772,18 @@ function showScan(scanPayload) {
     ? `Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas.`
     : null;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.frames.length} views · ${scan.surfaces.length} surface hints (${floors} horizontal, ${walls} vertical)`;
+    `${scan.frames.length} views · ${scan.pointCloud.length} 3D feature points · ${scan.surfaces.length} surface hints (${floors} horizontal, ${walls} vertical)`;
   review.classList.remove("hidden");
   renderCapturedFrames();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
-  panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0);
-  if (scan.surfaces.length) {
-    renderSurfaceList();
-    updateModel(true);
-  } else {
-    surfaceList.replaceChildren();
-  }
+  panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
+  if (scan.surfaces.length) renderSurfaceList();
+  else surfaceList.replaceChildren();
+  if (scan.surfaces.length || scan.pointCloud.length) updateModel(true);
   updateExportState();
   setStatus(captureWarning
-    ? `${captureWarning} Exporting the bundle only packages the images and calibration; a separate 3D reconstruction service is still required.`
-    : "Camera capture finished. Connect your GPU worker and select Reconstruct 3D preview to generate geometry.");
+    ? `${captureWarning} A sparse ARKit feature cloud was built locally; a dense room mesh is not available yet.`
+    : `Scan complete. ${scan.pointCloud.length} ARKit feature points were reconstructed locally as a sparse 3D preview. A dense, surface-complete room model is still in development.`);
   review.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
