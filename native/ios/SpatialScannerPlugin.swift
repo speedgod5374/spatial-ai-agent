@@ -112,6 +112,10 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     private var capturedDirectionBuckets = Set<Int>()
     private var darkFramesSkipped = 0
     private var lowDetailFramesCaptured = 0
+    private var lastFeaturePointSampleTimestamp: TimeInterval = 0
+    private var localFeaturePoints: [SIMD3<Float>] = []
+    private var localFeaturePointKeys = Set<String>()
+    private let maximumLocalFeaturePoints = 12_000
 
     private struct FrameQuality {
         let meanLuma: Double
@@ -411,8 +415,11 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         planesLock.unlock()
         let horizontal = snapshot.filter { $0.alignment == .horizontal }.count
         let vertical = snapshot.filter { $0.alignment == .vertical }.count
+        frameLock.lock()
+        let featureCount = localFeaturePoints.count
+        frameLock.unlock()
         DispatchQueue.main.async {
-            self.countLabel.text = "Plane hints: \(horizontal) horizontal · \(vertical) vertical"
+            self.countLabel.text = "Plane hints: \(horizontal) horizontal · \(vertical) vertical · \(featureCount) 3D features"
         }
     }
 
@@ -446,8 +453,39 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        collectLocalFeaturePoints(frame)
         updateLiveCaptureFeedback(frame)
         captureFrameIfUseful(frame)
+    }
+
+    /// Accumulates ARKit's world-tracked visual feature points locally.
+    /// These are sparse tracking landmarks, not a dense surface or metric room mesh.
+    private func collectLocalFeaturePoints(_ frame: ARFrame) {
+        guard frame.timestamp - lastFeaturePointSampleTimestamp >= 0.35 else { return }
+        lastFeaturePointSampleTimestamp = frame.timestamp
+        guard case .normal = frame.camera.trackingState,
+              let cloud = frame.rawFeaturePoints else { return }
+
+        let points = cloud.points
+        guard !points.isEmpty else { return }
+        let sampleStep = max(1, points.count / 500)
+
+        frameLock.lock()
+        guard !hasFinished, localFeaturePoints.count < maximumLocalFeaturePoints else {
+            frameLock.unlock()
+            return
+        }
+
+        for index in Swift.stride(from: 0, to: points.count, by: sampleStep) {
+            let point = points[index]
+            let key = "\(Int((point.x / 0.03).rounded()))_\(Int((point.y / 0.03).rounded()))_\(Int((point.z / 0.03).rounded()))"
+            guard !localFeaturePointKeys.contains(key) else { continue }
+            localFeaturePointKeys.insert(key)
+            localFeaturePoints.append(point)
+            if localFeaturePoints.count >= maximumLocalFeaturePoints { break }
+        }
+        frameLock.unlock()
+        updateCounts()
     }
 
     /// Gives immediate feedback while the user moves, even before a new keyframe
@@ -744,6 +782,7 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
         guard !hasFinished else { return }
         frameLock.lock()
         let frames = capturedFrames
+        let pointCloud = localFeaturePoints.map { [Double($0.x), Double($0.y), Double($0.z)] }
         guard frames.count >= 6 else {
             frameLock.unlock()
             updateTrackingDescription("Capture at least 6 viewpoints from different positions before finishing. Walk through the room; turning in place alone does not add a 3D viewpoint.")
@@ -767,6 +806,9 @@ private final class SpatialScannerViewController: UIViewController, ARSCNViewDel
             "frameCount": frames.count,
             "frames": frames,
             "planes": serializedPlanes(),
+            "pointCloud": pointCloud,
+            "pointCloudType": "arkit-raw-feature-points",
+            "pointCloudNote": "Sparse ARKit visual tracking landmarks in world coordinates. These are not dense surface samples or a complete room reconstruction.",
             "directionBuckets": Array(capturedDirectionBuckets).sorted(),
             "captureQuality": [
                 "method": "sampled-luma-and-local-gradient",
