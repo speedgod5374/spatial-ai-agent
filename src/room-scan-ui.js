@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createRoomModelExport, getConfirmedSurfaces, normalizeScanPayload } from "./room-model.js";
 import { buildCaptureArchive } from "./scan-archive.js";
 import { analyzeCameraPath } from "./capture-diagnostics.js";
+import { classifyPointCloudObjects } from "./object-classifier.js";
 import { isNativeARKitAvailable, scanRoomWithARKit } from "./native-scanner.js";
 
 const originalScanButton = document.getElementById("scan-button");
@@ -66,8 +67,21 @@ panel.innerHTML = `
       <div id="scan-frame-strip" class="flex gap-2 overflow-x-auto py-1"></div>
       <p id="scan-capture-export-status" class="text-[10px] text-[#7d897f]">Camera views and calibration data.</p>
     </div>
+    <section class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">Object shapes</div>
+          <h3 class="text-sm font-semibold mt-1">Possible furniture</h3>
+        </div>
+        <span id="scan-object-count" class="text-[10px] text-[#7a857d]">0 candidates</span>
+      </div>
+      <p class="text-[10px] text-[#89938b]">Rough 3D clusters are matched to basic furniture shapes by their dimensions. Review or change each suggested label.</p>
+      <div id="scan-object-list" class="space-y-2">
+        <p class="text-xs text-[#89938b]">No compact object shapes found yet.</p>
+      </div>
+    </section>
     <details id="scan-plane-details" class="hidden rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
-      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Optional ARKit plane hints (not a 3D room reconstruction)</summary>
+      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">3D preview and optional ARKit plane hints</summary>
     <div class="mt-3 rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
       <div class="px-3 py-2 border-b border-[#e5eae3] flex items-center justify-between">
         <span class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">ARKit plane patches · approximate geometry</span>
@@ -138,6 +152,8 @@ const captureExportButton = panel.querySelector("#scan-export-capture");
 const captureExportStatus = panel.querySelector("#scan-capture-export-status");
 const captureSummary = panel.querySelector("#scan-capture-summary");
 const frameStrip = panel.querySelector("#scan-frame-strip");
+const detectedObjectList = panel.querySelector("#scan-object-list");
+const detectedObjectCount = panel.querySelector("#scan-object-count");
 const planeDetails = panel.querySelector("#scan-plane-details");
 const startButton = panel.querySelector("#scan-start");
 const scanButton = document.getElementById("scan-button");
@@ -494,6 +510,55 @@ function sampledDirectionLabel(currentScan) {
   return currentScan?.captureQuality ? `${currentScan.directionBuckets.length}/8 directions` : "directions unavailable";
 }
 
+function renderDetectedObjects() {
+  const candidates = scan?.detectedObjects || [];
+  detectedObjectCount.textContent = candidates.length + (candidates.length === 1 ? " candidate" : " candidates");
+  detectedObjectList.replaceChildren();
+
+  if (!candidates.length) {
+    const empty = document.createElement("p");
+    empty.className = "text-xs text-[#89938b]";
+    empty.textContent = "No compact object shapes were separated from the scan. Try moving closer to furniture and capturing it from several sides.";
+    detectedObjectList.append(empty);
+    return;
+  }
+
+  const categories = ["Table", "Chair", "Sofa", "Bed", "Cabinet", "Object"];
+  candidates.forEach((candidate, index) => {
+    const card = document.createElement("article");
+    card.className = "flex flex-wrap items-center justify-between gap-3 border border-[#edf0ec] rounded-lg p-3";
+    const description = document.createElement("div");
+    description.className = "min-w-0 flex-1";
+    const title = document.createElement("p");
+    title.className = "text-xs font-semibold text-[#344139]";
+    title.textContent = "Shape " + (index + 1) + " · " + candidate.category + " candidate";
+    const dims = candidate.dimensions;
+    const meta = document.createElement("p");
+    meta.className = "text-[10px] text-[#7d897f] mt-1";
+    meta.textContent = dims.width.toFixed(2) + " × " + dims.depth.toFixed(2) + " × " +
+      dims.height.toFixed(2) + " m · " + candidate.pointCount + " visual points";
+    description.append(title, meta);
+
+    const select = document.createElement("select");
+    select.className = "max-w-[125px] bg-white px-2 py-2 text-[11px]";
+    select.setAttribute("aria-label", "Classify shape " + (index + 1));
+    categories.forEach(category => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      select.append(option);
+    });
+    select.value = categories.includes(candidate.category) ? candidate.category : "Object";
+    select.addEventListener("change", () => {
+      candidate.category = select.value;
+      title.textContent = "Shape " + (index + 1) + " · " + candidate.category;
+      updateModel();
+    });
+    card.append(description, select);
+    detectedObjectList.append(card);
+  });
+}
+
 function renderCapturedFrames() {
   frameStrip.replaceChildren();
   const frames = scan?.frames || [];
@@ -680,6 +745,43 @@ function updateModel(fit = false) {
     modelGroup.add(cloud);
   }
 
+  const categoryColors = {
+    Table: 0xc89a58,
+    Chair: 0x668caa,
+    Sofa: 0x7b8f78,
+    Bed: 0x9b86ac,
+    Cabinet: 0x8a9698,
+    Object: 0x9b9b91,
+    Other: 0x9b9b91
+  };
+  (scan.detectedObjects || []).forEach(candidate => {
+    const dims = candidate.dimensions;
+    const center = candidate.center;
+    if (!dims || !center) return;
+    const geometry = new THREE.BoxGeometry(
+      Math.max(dims.width, 0.08),
+      Math.max(dims.height, 0.08),
+      Math.max(dims.depth, 0.08)
+    );
+    const color = categoryColors[candidate.category] || categoryColors.Object;
+    const fill = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.12,
+        depthWrite: false
+      })
+    );
+    fill.position.set(center[0], center[1], center[2]);
+    modelGroup.add(fill);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({ color })
+    );
+    fill.add(edges);
+  });
+
   if (fit) fitModelView();
   updateExportState();
 }
@@ -752,6 +854,7 @@ async function downloadCaptureBundle() {
 
 function showScan(scanPayload) {
   scan = normalizeScanPayload(scanPayload);
+  scan.detectedObjects = classifyPointCloudObjects(scan.pointCloud);
   reconstructionResult.classList.add("hidden");
   reconstructionEngineStatus.textContent = "Worker not checked";
   if (!scan.frames.length && !scan.surfaces.length && !scan.pointCloud.length) {
@@ -772,10 +875,11 @@ function showScan(scanPayload) {
     ? `Capture complete. ${darkSkipped} too-dark views were skipped and ${lowDetail} low-detail views were kept as warnings. Review the thumbnails and rescan dim or visually plain areas.`
     : null;
   panel.querySelector("#scan-summary").textContent =
-    `${scan.frames.length} views · ${scan.pointCloud.length} 3D feature points · ${scan.surfaces.length} surface hints (${floors} horizontal, ${walls} vertical)`;
+    `${scan.frames.length} views · ${scan.pointCloud.length} 3D feature points · ${scan.detectedObjects.length} possible objects · ${scan.surfaces.length} surface hints (${floors} horizontal, ${walls} vertical)`;
   review.classList.remove("hidden");
   renderCapturedFrames();
-  planeDetails.classList.toggle("hidden", scan.surfaces.length === 0);
+  renderDetectedObjects();
+  planeDetails.classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
   panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
   if (scan.surfaces.length) renderSurfaceList();
   else surfaceList.replaceChildren();
@@ -783,7 +887,7 @@ function showScan(scanPayload) {
   updateExportState();
   setStatus(captureWarning
     ? `${captureWarning} A sparse ARKit feature cloud was built locally; a dense room mesh is not available yet.`
-    : `Scan complete. ${scan.pointCloud.length} ARKit feature points were reconstructed locally as a sparse 3D preview. A dense, surface-complete room model is still in development.`);
+    : `Scan complete. Found ${scan.detectedObjects.length} possible furniture shapes. Labels are rough shape-based guesses, so review them before using the model.`);
   review.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
