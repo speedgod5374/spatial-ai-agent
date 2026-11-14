@@ -41,6 +41,7 @@ From the repository root:
 ```bash
 export PYTHONPATH="$PWD/services/reconstruction-worker"
 export RECONSTRUCTION_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+printf 'API key for the iPhone app: %s\\n' "$RECONSTRUCTION_API_KEY"
 uvicorn app:app --app-dir services/reconstruction-worker --host 0.0.0.0 --port 8000
 ```
 
