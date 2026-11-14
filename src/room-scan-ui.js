@@ -94,7 +94,7 @@ panel.innerHTML = `
     </details>
     <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
       <p id="scan-export-status" class="text-[10px] text-[#7d897f]">Optional geometry hints only. These are not a complete room model.</p>
-      <button id="scan-export" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export confirmed plane hints (.json)</button>
+      <button id="scan-export" type="button" disabled class="bg-[#214b39] disabled:opacity-40 text-white text-xs font-semibold rounded-lg px-4 py-3 min-h-[44px]">Export scan model (.json)</button>
     </div>
   </div>
 `;
@@ -498,9 +498,11 @@ function updateExportState() {
   exportButton.disabled = confirmed.length === 0;
   captureExportButton.disabled = frameCount < 1;
   reconstructionRunButton.disabled = frameCount < 6 || reconstructionBusy;
-  exportStatus.textContent = confirmed.length
-    ? `${confirmed.length} confirmed surface${confirmed.length === 1 ? "" : "s"} and the local point cloud will be exported.`
-    : `${scan?.pointCloud?.length || 0} local feature points and the capture bundle are available; no plane hints confirmed.`;
+  const objectCount = scan?.detectedObjects?.length || 0;
+  exportButton.disabled = confirmed.length === 0 && objectCount === 0;
+  exportStatus.textContent = confirmed.length || objectCount
+    ? `${confirmed.length} confirmed surfaces and ${objectCount} labeled object shapes will be included in the scan export.`
+    : `${scan?.pointCloud?.length || 0} local feature points captured. No object shapes or confirmed surfaces are ready to export.`;
   captureExportStatus.textContent = frameCount
     ? `${frameCount} camera views, ARKit poses, intrinsics, and local feature points are ready for export.`
     : "The bundle contains JPEG views, camera poses, and calibration for reconstruction.";
@@ -822,7 +824,7 @@ async function downloadJSON() {
   try {
     const payload = createRoomModelExport(scan);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const result = await deliverFile(blob, "spatial-studio-room-hints.json");
+    const result = await deliverFile(blob, "spatial-studio-room-model.json");
     exportStatus.textContent = result === "cancelled"
       ? "Save cancelled."
       : result === "shared"
