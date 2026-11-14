@@ -65,6 +65,12 @@ export function normalizeScanPayload(payload, capturedAt = new Date().toISOStrin
   const frames = Array.isArray(payload.frames)
     ? payload.frames.filter(frame => frame && typeof frame.imageBase64 === "string" && frame.imageBase64.length > 0)
     : [];
+  const pointCloud = Array.isArray(payload.pointCloud)
+    ? payload.pointCloud
+        .filter(point => Array.isArray(point) && point.length >= 3 && point.slice(0, 3).every(value => Number.isFinite(Number(value))))
+        .slice(0, 12000)
+        .map(point => point.slice(0, 3).map(value => Number(value)))
+    : [];
   const directionSource = Array.isArray(payload.directionBuckets)
     ? payload.directionBuckets
     : payload.captureQuality?.directionBuckets;
@@ -90,6 +96,9 @@ export function normalizeScanPayload(payload, capturedAt = new Date().toISOStrin
     tracking: String(payload.tracking || "unknown"),
     frameCount: frames.length,
     frames,
+    pointCloud,
+    pointCloudType: String(payload.pointCloudType || "none"),
+    pointCloudNote: String(payload.pointCloudNote || ""),
     directionBuckets,
     captureQuality,
     rawPlanes: Array.isArray(payload.planes) ? payload.planes : [],
@@ -124,13 +133,16 @@ export function createRoomModelExport(scan) {
 
   return {
     schemaVersion: 1,
-    source: "ARKit plane observations (not a complete room model)",
+    source: "ARKit sparse visual feature cloud and plane observations (not a complete room model)",
     deviceCapability: "Camera-based ARKit; no LiDAR or RoomPlan",
     units: "meters",
     capturedAt: scan?.capturedAt || new Date().toISOString(),
     tracking: scan?.tracking || "unknown",
     accuracyNote: "These are optional camera-based plane observations, not a reconstructed room mesh, complete floor plan, or certified measurement. Confirm and correct every surface before relying on it.",
     observations: surfaces.map(serialize),
+    pointCloud: Array.isArray(scan?.pointCloud) ? scan.pointCloud : [],
+    pointCloudType: scan?.pointCloudType || "none",
+    pointCloudNote: scan?.pointCloudNote || "Sparse visual tracking landmarks are not dense surface geometry.",
     model: {
       type: "confirmed-plane-hints",
       surfaces: getConfirmedSurfaces(surfaces).map(serialize)
