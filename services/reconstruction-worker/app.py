@@ -19,6 +19,8 @@ from PIL import Image, UnidentifiedImageError
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
+from scan_quality import analyze_camera_poses
+
 from geometry import (
     arkit_camera_to_world_to_opencv_world_to_camera,
     validate_intrinsics,
@@ -258,6 +260,10 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
         input_dir.mkdir()
         output_dir.mkdir()
         image_paths, extrinsics, intrinsics, manifest = parse_capture_archive(archive_bytes, input_dir)
+        camera_path = analyze_camera_poses([
+            frame.get("cameraToWorldARKit") or frame.get("cameraTransform")
+            for frame in manifest["frames"]
+        ])
 
         model = await run_in_threadpool(load_model)
         await run_in_threadpool(
@@ -280,6 +286,10 @@ async def reconstruct(capture: UploadFile = File(...)) -> FileResponse:
         response_headers = {
             "X-Reconstruction-Engine": MODEL_ID,
             "X-Captured-Frames": str(len(image_paths)),
+            "X-Camera-Path-Length-M": str(camera_path["pathLengthMeters"]),
+            "X-Camera-Span-X-M": str(camera_path["horizontalSpanXMeters"]),
+            "X-Camera-Span-Z-M": str(camera_path["horizontalSpanZMeters"]),
+            "X-Scan-Quality-Warnings": json.dumps(camera_path["warnings"], separators=(",", ":")),
             "X-Alignment-Mode": "ARKit camera poses aligned to DA3 reconstruction scale",
             "X-Depth-Confidence": "See model output; review geometry before measuring furniture fit.",
         }
