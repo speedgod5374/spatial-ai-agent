@@ -386,8 +386,8 @@ function buildPanels() {
       footer.className = 'flex items-center justify-between gap-2 pt-1';
       const price = document.createElement('span');
       price.className = 'text-xs font-semibold text-[#344139]';
-      price.textContent = '
-      const add = document.createElement('button');
+      price.textContent = "$" + item.price;
+      const add = document.createElement("button");
       add.type = 'button';
       add.className = 'bg-[#3f5f50] text-white rounded-lg px-3 py-2 text-[10px] font-semibold';
       add.textContent = 'Add +';
