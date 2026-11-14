@@ -98,6 +98,18 @@ VGGT is relevant because its released pipeline predicts camera parameters, depth
 
 Only after camera/depth alignment is stable should depth maps be fused into a surface. Open3D's TSDF integration is designed to combine noisy depth images with known camera poses and smooth the resulting geometry. It is a later fusion stage, not a substitute for good camera calibration or pose alignment.
 
+## Depth prediction health checks
+
+After DA3 inference, the worker inspects the returned depth tensor and (when present) confidence map before returning the GLB. The response includes:
+
+- `X-Depth-Valid-Fraction`: median fraction of finite, positive depth pixels across frames.
+- `X-Depth-Quality`: compact JSON summary with frame count, processed image size, depth percentiles, confidence-map availability, and warnings.
+- `X-Depth-Quality-Warnings`: JSON array of warnings, including frames with fewer than half their pixels containing valid depth.
+
+These checks detect empty, malformed, or substantially invalid predictions. They **do not** establish that the predicted geometry is metrically accurate, correctly aligned between views, or a complete room reconstruction. Confidence values are reported descriptively rather than thresholded because their scale should be validated for the selected checkpoint before assigning a universal cutoff.
+
+The worker still returns the GLB preview. Depth diagnostics are included in response headers for a future client review screen. Cross-view reprojection error and TSDF fusion remain future work; TSDF should only be attempted after pose and depth alignment have been benchmarked.
+
 ## Pose convention
 
 ARKit frame metadata stores a column-major 4×4 camera-to-world transform. ARKit camera coordinates use +X right, +Y up, and -Z forward. DA3 documents input extrinsics as world-to-camera; the worker converts the pose to OpenCV camera coordinates (+X right, +Y down, +Z forward) before passing it to DA3. Intrinsics are scaled to the exact sensor-native JPEG size and are passed as a 3×3 matrix.
