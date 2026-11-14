@@ -81,9 +81,11 @@ export function classifyPointCloudObjects(points, options = {}) {
     const queue = [startVoxel];
     visited.add(startKey);
     const cluster = [];
+    let clusterVoxelCount = 0;
 
     while (queue.length) {
       const voxel = queue.pop();
+      clusterVoxelCount += 1;
       cluster.push(...voxel.points);
       const [cx, cy, cz] = voxel.cell;
       for (const [dx, dy, dz] of neighborOffsets) {
@@ -97,7 +99,9 @@ export function classifyPointCloudObjects(points, options = {}) {
       }
     }
 
-    if (cluster.length < settings.minimumPoints || cluster.length > 1800) continue;
+    if (cluster.length < settings.minimumPoints ||
+        clusterVoxelCount < settings.minimumVoxels ||
+        cluster.length > 1800) continue;
     const min = [Infinity, Infinity, Infinity];
     const max = [-Infinity, -Infinity, -Infinity];
     for (const point of cluster) {
