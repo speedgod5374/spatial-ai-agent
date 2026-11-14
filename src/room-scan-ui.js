@@ -1217,6 +1217,8 @@ function showScan(scanPayload) {
 }
 
 async function startScan() {
+  // Keep scan review visible when the scan completes, regardless of the current tab.
+  document.querySelector('[data-tab="viewer"]')?.click();
   startButton.disabled = true;
   if (scanButton) scanButton.disabled = true;
   setStatus("Starting the camera and preparing guided multi-view capture…");
