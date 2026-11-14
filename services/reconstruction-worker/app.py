@@ -15,6 +15,7 @@ import numpy as np
 import torch
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
@@ -45,6 +46,31 @@ app = FastAPI(
     title="Spatial Studio Reconstruction Worker",
     version="0.1.0",
     description="GPU worker that converts Spatial Studio multi-view captures into a preview GLB.",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "capacitor://localhost",
+        "http://localhost",
+        "https://localhost",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://speedgod5374.github.io",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
+    expose_headers=[
+        "X-Reconstruction-Engine",
+        "X-Captured-Frames",
+        "X-Camera-Path-Length-M",
+        "X-Camera-Span-X-M",
+        "X-Camera-Span-Z-M",
+        "X-Scan-Quality-Warnings",
+        "X-Depth-Quality",
+        "X-Depth-Quality-Warnings",
+        "X-Depth-Valid-Fraction",
+    ],
 )
 _model: Any | None = None
 
