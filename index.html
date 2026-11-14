@@ -3,136 +3,122 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#ffffff" />
-  <title>Spatial Studio — Room & Furniture Planner</title>
+  <meta name="theme-color" content="#f6f7f5" />
+  <title>Spatial Studio</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
-    body { font-family: 'Google Sans', 'Inter', sans-serif; background:#f8f9fa; color:#202124; touch-action:manipulation; }
-    .material-card { background:#fff; border:1px solid #dadce0; border-radius:16px; box-shadow:0 1px 2px rgba(60,64,67,.18); }
-    button:disabled { opacity:.55; cursor:wait; }
-    #three-container canvas { display:block; width:100%; height:100%; }
-  </style>
-
-  <style>
-    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#e4e9f1; --blue:#315efb; --surface:#ffffff; --canvas:#f3f6fb; }
-    body { background:radial-gradient(circle at 12% 0%,#e6edff 0,transparent 34%),#eef2f8; color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
-    #app-shell { max-width:1180px; height:min(920px,calc(100dvh - 32px)); border:1px solid #dbe2ed; border-radius:28px; box-shadow:0 24px 80px rgba(31,48,79,.14); background:#fbfcfe; }
-    #app-shell > .bg-white:first-child { background:#f8faff; padding:10px 28px; }
-    #app-shell header { padding:18px 28px; background:rgba(255,255,255,.94); }
-    #app-shell header h1 { font-size:21px; font-weight:750; letter-spacing:-.04em; color:#172033; }
-    #app-shell header p { margin-top:3px; color:#7b8496; }
-    #scan-button { background:linear-gradient(135deg,#4169ff,#2448d8); border-radius:13px; padding:12px 18px; box-shadow:0 7px 18px rgba(49,94,251,.2); }
-    #scan-button:hover { background:#2448d8; }
-    #three-container { background:radial-gradient(circle at 50% 35%,#fff 0,#edf2f9 72%); }
-    #app-shell > section.relative { height:370px; border-bottom:1px solid var(--line); }
-    #app-shell > .flex-1 { padding:22px 26px; background:#f5f7fb; }
-    .material-card { border:1px solid var(--line); border-radius:18px; box-shadow:0 3px 12px rgba(24,39,75,.035); transition:box-shadow .18s ease,transform .18s ease; }
-    .material-card:hover { box-shadow:0 7px 20px rgba(24,39,75,.07); }
-    .material-card h2,.material-card h3 { color:#202b40; }
-    .tab-panel { min-height:100%; }
-    #tab-viewer:not(.hidden) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:16px; }
-    #tab-viewer > section { min-width:0; }
-    #tab-viewer > section:last-child { grid-column:1 / -1; }
-    #tab-layout:not(.hidden) { max-width:900px; margin:0 auto; }
-    #tab-store:not(.hidden) { max-width:1000px; margin:0 auto; }
-    #tab-store #store-grid { grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); }
-    #bottom-nav { padding:12px 20px max(12px,env(safe-area-inset-bottom)); background:rgba(255,255,255,.96); }
-    .tab-button { min-width:100px; border-radius:12px; transition:background .15s ease,color .15s ease; }
-    .tab-button[aria-current="page"] { background:#edf1ff; color:#315efb; }
-    button { transition:filter .15s ease,transform .15s ease; }
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+    :root {
+      color-scheme: light;
+      --ink:#202923; --muted:#7a847d; --line:#e7ebe6; --accent:#547565;
+      --accent-dark:#3f5f50; --paper:#fff; --canvas:#f5f7f4;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:#f2f4f1; color:var(--ink); font-family:'DM Sans',sans-serif; }
+    button,input,select { font:inherit; }
+    button { cursor:pointer; transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
     button:not(:disabled):active { transform:translateY(1px); }
-    input { border-color:#dce3ed !important; border-radius:10px !important; outline-color:#315efb; }
-    #notice { border-radius:14px; }
-    @media (max-width:700px) {
-      body { display:block; background:#f5f7fb; }
-      #app-shell { max-width:none; width:100%; height:100dvh; min-height:600px; border:0; border-radius:0; box-shadow:none; }
-      #app-shell > section.relative { height:32vh; min-height:230px; max-height:340px; }
-      #app-shell header { padding:14px 18px; }
-      #app-shell > .flex-1 { padding:14px; }
-      #tab-viewer:not(.hidden) { grid-template-columns:1fr; gap:12px; }
+    #app-shell { width:min(1180px,calc(100vw - 40px)); height:min(900px,calc(100dvh - 40px)); min-height:620px; margin:20px auto; overflow:hidden; display:flex; flex-direction:column; background:var(--paper); border:1px solid #e3e8e2; border-radius:20px; box-shadow:0 20px 70px rgba(35,48,39,.09); }
+    .topline { height:42px; padding:0 26px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#fff; color:var(--muted); font-size:11px; }
+    .brand-mark { width:25px; height:25px; display:grid; place-items:center; border-radius:8px; background:#eaf0eb; color:var(--accent-dark); font:800 13px Manrope,sans-serif; }
+    header.app-header { padding:17px 26px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); background:#fff; }
+    header h1 { margin:0; font:800 19px Manrope,sans-serif; letter-spacing:-.045em; }
+    header p { margin:3px 0 0; font-size:11px; color:var(--muted); }
+    #scan-button { min-height:42px; padding:0 18px; border:0; border-radius:10px; background:var(--accent-dark); color:#fff; font-size:12px; font-weight:700; }
+    #scan-button:hover,.primary-action:hover { background:#344f42; }
+    .workspace { min-height:0; flex:1; display:flex; flex-direction:column; background:var(--canvas); }
+    .scene-wrap { position:relative; flex:0 0 39%; min-height:230px; max-height:390px; overflow:hidden; border-bottom:1px solid var(--line); background:#eef1ed; }
+    #three-container { position:absolute; inset:0; width:100%; height:100%; background:radial-gradient(ellipse at 50% 38%,#fff 0%,#eef2ed 72%); }
+    #three-container canvas { display:block; width:100%; height:100%; touch-action:none; }
+    .scene-chip { position:absolute; z-index:2; top:15px; left:17px; padding:7px 10px; border:1px solid rgba(224,230,223,.9); border-radius:8px; background:rgba(255,255,255,.88); color:#647168; font-size:10px; font-weight:600; backdrop-filter:blur(12px); }
+    #dimension-tag { position:absolute; z-index:2; right:16px; bottom:14px; padding:7px 10px; border:1px solid #e2e8e1; border-radius:8px; background:rgba(255,255,255,.92); color:#59675e; font-size:10px; font-weight:600; }
+    #viewer-hint { position:absolute; z-index:2; left:17px; bottom:14px; color:#879189; font-size:10px; }
+    .dashboard { flex:1; min-height:0; overflow-y:auto; padding:20px 26px; background:#f8f9f7; }
+    .tab-panel { min-height:100%; }
+    .material-card { border:1px solid var(--line); border-radius:13px; background:#fff; box-shadow:0 2px 8px rgba(35,48,39,.025); }
+    .material-card h2,.material-card h3 { color:var(--ink); font-family:Manrope,sans-serif; letter-spacing:-.02em; }
+    .eyebrow { color:var(--accent); font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+    .tab-button { min-width:90px; padding:10px 15px; border:0; border-radius:9px; background:transparent; color:#7b857e; font-size:12px; font-weight:600; }
+    .tab-button[aria-current="page"] { background:#eaf0eb; color:var(--accent-dark); }
+    #bottom-nav { flex:none; display:flex; justify-content:center; gap:6px; padding:10px 18px max(10px,env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:#fff; }
+    input,select { border:1px solid #dfe5de !important; border-radius:8px !important; color:var(--ink); }
+    input:focus,select:focus { outline:2px solid rgba(84,117,101,.2); border-color:var(--accent) !important; }
+    #notice { position:fixed; z-index:80; left:50%; bottom:22px; transform:translateX(-50%); width:max-content; max-width:calc(100vw - 32px); padding:12px 16px; border-radius:10px; background:#202923; color:white; font-size:12px; box-shadow:0 8px 30px rgba(0,0,0,.16); }
+    #tab-viewer:not(.hidden) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:start; gap:14px; }
+    #tab-viewer > section { min-width:0; }
+    #tab-viewer > section:last-child { grid-column:1/-1; }
+    #room-scan-workspace { grid-column:1/-1; }
+    #tab-layout:not(.hidden),#tab-store:not(.hidden) { max-width:900px; margin:0 auto; width:100%; }
+    #tab-store #store-grid { grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); }
+    @media(max-width:700px) {
+      body { background:#f8f9f7; }
+      #app-shell { width:100%; height:100dvh; min-height:580px; margin:0; border:0; border-radius:0; box-shadow:none; }
+      .topline { height:36px; padding:0 18px; }
+      header.app-header { padding:13px 18px; }
+      header h1 { font-size:17px; }
+      #scan-button { min-height:40px; padding:0 14px; }
+      .scene-wrap { flex:0 0 31%; min-height:215px; max-height:300px; }
+      .dashboard { padding:14px; }
+      #tab-viewer:not(.hidden) { grid-template-columns:minmax(0,1fr); gap:11px; }
       #tab-viewer > section:last-child { grid-column:auto; }
-      #bottom-nav { padding-bottom:max(12px,env(safe-area-inset-bottom)); }
-      .tab-button { min-width:0; flex:1; }
+      #room-scan-workspace { grid-column:auto; }
+      #bottom-nav { justify-content:stretch; }
+      .tab-button { flex:1; min-width:0; }
+    }
+    @media(min-width:701px) and (max-height:760px) {
+      #app-shell { height:calc(100dvh - 20px); margin:10px auto; }
+      .scene-wrap { flex-basis:34%; }
     }
   </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-0 sm:p-4">
-  <main id="app-shell" class="w-full max-w-md bg-white sm:rounded-[32px] sm:border-[8px] sm:border-[#202124] shadow-2xl overflow-hidden flex flex-col h-screen sm:h-[850px]">
-    <div class="bg-white px-6 py-3 flex justify-between items-center text-xs text-[#5f6368] border-b border-[#dadce0]">
-      <span>Spatial Studio</span>
-      <div class="flex items-center gap-2"><span id="system-status-text">Ready</span><span id="status-dot" class="w-2 h-2 bg-[#9aa0a6] rounded-full"></span></div>
+<body>
+  <main id="app-shell">
+    <div class="topline">
+      <div class="flex items-center gap-2"><span class="brand-mark">S</span><span class="font-semibold tracking-wide">SPATIAL STUDIO</span></div>
+      <div class="flex items-center gap-2"><span id="system-status-text">Ready</span><span id="status-dot" class="w-2 h-2 rounded-full bg-[#9aa59d]"></span></div>
     </div>
-
-    <header class="px-6 py-4 bg-white border-b border-[#dadce0] flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-lg font-medium tracking-tight">Spatial Studio</h1>
-        <p class="text-xs text-[#5f6368]">Room planning, made visual</p>
-      </div>
-      <button id="scan-button" class="bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-medium px-4 py-3 rounded-full min-h-[44px] shadow-sm">Scan Room</button>
+    <header class="app-header">
+      <div><h1>Room Studio</h1><p>Scan, arrange, and refine your space.</p></div>
+      <button id="scan-button" type="button">Scan room <span aria-hidden="true">↗</span></button>
     </header>
-
-    <section class="relative w-full h-[300px] bg-[#f1f3f4] overflow-hidden border-b border-[#dadce0]">
-      <div id="three-container" class="absolute inset-0 w-full h-full"></div>
-      <div class="absolute top-3 left-3 z-10">
-        <span id="scan-badge" class="text-[11px] font-medium bg-white/95 text-[#5f6368] border border-[#dadce0] px-3 py-1.5 rounded-full shadow-sm">3D workspace</span>
-      </div>
-      <div id="dimension-tag" class="absolute bottom-3 right-3 text-[11px] text-[#5f6368] bg-white/95 px-3 py-1.5 rounded-full border border-[#dadce0] font-medium shadow-sm z-10">Editable room model</div>
-      <div id="viewer-hint" class="absolute bottom-3 left-3 text-[10px] text-[#5f6368] bg-white/90 px-2 py-1 rounded-full z-10">Drag to orbit · Scroll to zoom</div>
+    <section class="scene-wrap">
+      <div id="three-container"></div>
+      <div class="scene-chip" id="scan-badge">3D workspace</div>
+      <div id="dimension-tag">4.5m × 5.2m × 2.8m</div>
+      <div id="viewer-hint">Drag to orbit · Scroll to zoom</div>
     </section>
-
-    <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fa]">
-      <section class="material-card p-4 space-y-3">
-        <div class="flex justify-between items-center">
-          <span class="text-xs font-medium uppercase tracking-wider text-[#1a73e8]">Spatial Analysis</span>
-          <span id="confidence-label" class="text-[11px] text-[#5f6368] bg-[#f1f3f4] px-2 py-1 rounded">Not scanned</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-xs">
-          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed]">
-            <span class="text-[#5f6368] block text-[10px] uppercase font-medium">Room data</span>
-            <span id="detected-space-name" class="font-medium text-sm">Awaiting scan</span>
+    <div class="workspace">
+      <div class="dashboard">
+        <section class="material-card p-4 space-y-3">
+          <div class="flex items-center justify-between gap-3">
+            <span class="eyebrow">Room overview</span>
+            <span id="confidence-label" class="text-[10px] text-[#78847b] bg-[#f2f5f1] px-2.5 py-1.5 rounded-md">Not scanned</span>
           </div>
-          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed]">
-            <span class="text-[#5f6368] block text-[10px] uppercase font-medium">Detected objects</span>
-            <span id="object-count" class="font-medium text-sm">0</span>
+          <div class="grid grid-cols-2 gap-3">
+            <div><span class="block text-[10px] text-[#8a948c] mb-1">ROOM</span><span id="detected-space-name" class="text-sm font-semibold">New room</span></div>
+            <div><span class="block text-[10px] text-[#8a948c] mb-1">OBJECTS</span><span id="object-count" class="text-sm font-semibold">0</span></div>
           </div>
-        </div>
-        <p id="scan-message" class="text-xs text-[#5f6368] leading-relaxed">Scan a room with the native iOS app, or import a room-data JSON file from a previous scan.</p>
-      </section>
-
-      <section class="material-card p-4 space-y-3">
-        <div class="flex justify-between items-center">
-          <span class="text-xs font-medium uppercase tracking-wider text-[#b06000]">Existing Furniture</span>
-          <span id="anchor-count" class="text-[11px] text-[#5f6368]">0 items</span>
-        </div>
-        <div id="anchor-list" class="space-y-2">
-          <div class="bg-[#f8f9fa] p-3 rounded-xl border border-[#e8eaed] text-xs text-[#5f6368]">Furniture detected by the scan will appear here.</div>
-        </div>
-      </section>
-
-      <section class="material-card p-4 space-y-3">
-        <div class="flex justify-between items-center">
-          <span class="text-xs font-medium uppercase tracking-wider text-[#9334e6]">Furniture Recommendations</span>
-          <span class="text-[11px] text-[#5f6368]">Not connected</span>
-        </div>
-        <p class="text-xs text-[#5f6368] leading-relaxed">Retail matching is not connected yet. The next step is to use measured openings and existing furniture dimensions to filter a real product catalog.</p>
-      </section>
-
-      <section class="flex gap-2">
-        <button id="import-button" class="flex-1 bg-white border border-[#dadce0] text-[#202124] text-xs font-medium px-3 py-3 rounded-full min-h-[44px]">Import scan JSON</button>
-        <button id="export-button" class="flex-1 bg-white border border-[#dadce0] text-[#202124] text-xs font-medium px-3 py-3 rounded-full min-h-[44px]" disabled>Export scan JSON</button>
-        <input id="import-input" type="file" accept=".json,application/json" class="hidden" />
-      </section>
+          <p id="scan-message" class="text-xs text-[#778279] leading-relaxed">Start a scan or import a saved room.</p>
+        </section>
+        <section class="material-card p-4 space-y-3">
+          <div class="flex items-center justify-between gap-3"><span class="eyebrow">Placed furniture</span><span id="anchor-count" class="text-[10px] text-[#7d887f]">0 items</span></div>
+          <div id="anchor-list" class="space-y-2"><div class="text-xs text-[#89938b]">Your furniture will appear here.</div></div>
+        </section>
+        <section class="flex flex-wrap gap-2">
+          <button id="import-button" type="button" class="flex-1 min-w-[130px] bg-white border border-[#dfe5de] text-[#435248] text-xs font-semibold px-4 py-3 rounded-lg">Import room</button>
+          <button id="export-button" type="button" class="flex-1 min-w-[130px] bg-white border border-[#dfe5de] text-[#435248] text-xs font-semibold px-4 py-3 rounded-lg" disabled>Export room</button>
+          <input id="import-input" type="file" accept=".json,application/json" class="hidden" />
+        </section>
+      </div>
     </div>
-
-    <nav id="bottom-nav" class="bg-white border-t border-[#dadce0] py-2 px-4 flex justify-around text-xs text-[#5f6368]" aria-label="Main navigation">
-      <button type="button" data-tab="viewer" class="tab-button text-[#1a73e8] font-medium py-2 px-4 rounded-full" aria-current="page">Viewer</button>
-      <button type="button" data-tab="layout" class="tab-button py-2 px-4 rounded-full">Layout</button>
-      <button type="button" data-tab="store" class="tab-button py-2 px-4 rounded-full">Store</button>
+    <nav id="bottom-nav" aria-label="Main navigation">
+      <button type="button" data-tab="viewer" class="tab-button" aria-current="page">Overview</button>
+      <button type="button" data-tab="layout" class="tab-button" aria-current="false">Layout</button>
+      <button type="button" data-tab="store" class="tab-button" aria-current="false">Catalog</button>
     </nav>
   </main>
-
-  <div id="notice" class="fixed inset-x-4 bottom-4 z-50 hidden max-w-md mx-auto bg-[#202124] text-white text-sm px-4 py-3 rounded-xl shadow-xl" role="status" aria-live="polite"></div>
+  <div id="notice" class="hidden" role="status" aria-live="polite"></div>
   <script type="module" src="./src/main.js"></script>
   <script type="module" src="./src/room-scan-ui.js"></script>
 </body>
