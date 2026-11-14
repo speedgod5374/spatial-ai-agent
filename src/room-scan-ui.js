@@ -81,26 +81,31 @@ panel.innerHTML = `
         <p class="text-xs text-[#89938b]">No compact object shapes found yet.</p>
       </div>
     </section>
-    <details id="scan-plane-details" class="hidden rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
-      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Room visualization and scan data</summary>
-    <div class="mt-3 rounded-xl border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
-      <div class="px-3 py-2 border-b border-[#e5eae3] flex flex-wrap items-center justify-between gap-2">
+    <section id="scan-visualization" class="rounded-xl border border-[#e5eae3] bg-white p-3 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">Room visualization</div>
-          <p class="text-[10px] text-[#89938b] mt-1">Switch between a transparent 3D room envelope and a top-down floor plan.</p>
+          <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">Room model</div>
+          <h3 class="text-sm font-semibold mt-1">Room visualization</h3>
+          <p class="text-[10px] text-[#89938b] mt-1">Estimated room volume and furniture shapes from the scan.</p>
         </div>
-        <div class="inline-flex rounded-lg border border-[#e1e7df] bg-white p-1 gap-1" role="group" aria-label="Room visualization mode">
-          <button id="scan-view-3d" type="button" aria-pressed="true" class="rounded-md px-3 py-2 text-[11px] font-semibold bg-[#3f5f50] text-white">3D view</button>
-          <button id="scan-view-floorplan" type="button" aria-pressed="false" class="rounded-md px-3 py-2 text-[11px] font-semibold text-[#66736a]">Floor plan</button>
+        <div class="inline-flex rounded-lg border border-[#e1e7e0] bg-[#f7f9f6] p-1 gap-1" role="group" aria-label="Room visualization mode">
+          <button id="scan-view-3d" type="button" aria-pressed="true" class="px-3 py-2 rounded-md bg-white shadow-sm text-[11px] font-semibold text-[#3f5f50]">3D view</button>
+          <button id="scan-view-plan" type="button" aria-pressed="false" class="px-3 py-2 rounded-md text-[11px] font-semibold text-[#778279]">Floor plan</button>
         </div>
       </div>
-      <div class="relative">
-        <canvas id="scan-model-canvas" class="block w-full h-[300px]"></canvas>
-        <svg id="scan-floorplan-canvas" class="hidden w-full h-[300px] bg-[#f7f8f5]" viewBox="0 0 800 520" role="img" aria-label="Approximate top-down room floor plan"></svg>
+      <div class="rounded-lg border border-[#e5eae3] bg-[#f7f8f5] overflow-hidden">
+        <div class="px-3 py-2 flex items-center justify-between gap-2 border-b border-[#e5eae3]">
+          <span id="scan-view-caption" class="text-[10px] uppercase tracking-wider font-semibold text-[#7d897f]">3D room envelope</span>
+          <span class="text-[10px] text-[#89938b]">Drag to orbit · pinch to zoom</span>
+        </div>
+        <canvas id="scan-model-canvas" class="block w-full h-[340px]"></canvas>
+        <p id="scan-model-note" class="px-3 py-2 border-t border-[#e5eae3] text-[10px] leading-relaxed text-[#7f8a81]">The room outline is an estimate, not a complete reconstructed mesh.</p>
       </div>
-      <div id="scan-model-caption" class="px-3 py-2 border-t border-[#e5eae3] text-[10px] leading-relaxed text-[#7f8a81]">The room envelope is estimated from observed ARKit surfaces; it is not a complete room mesh.</div>
-    </div>
-    <div id="scan-surfaces" class="space-y-2 mt-3"></div>
+    </section>
+    <details id="scan-plane-details" class="rounded-xl border border-[#e5eae3] bg-[#fbfcfa] p-3">
+      <summary class="cursor-pointer text-xs font-semibold text-[#526257]">Scan diagnostics · ARKit plane observations</summary>
+      <p id="scan-plane-note" class="text-[10px] text-[#89938b] mt-3 mb-2">Detected floor and wall patches are retained as scan data. They are not shown as separate panels in the room visualization.</p>
+      <div id="scan-surfaces" class="space-y-2 mt-3"></div>
     </details>
     <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
       <p id="scan-export-status" class="text-[10px] text-[#7d897f]">Optional geometry hints only. These are not a complete room model.</p>
@@ -201,6 +206,13 @@ let controls = null;
 let modelGroup = null;
 let animationStarted = false;
 let resizeObserver = null;
+let visualizationMode = "3d";
+let roomBounds = null;
+let orthographicSpan = 6;
+const view3DButton = panel.querySelector("#scan-view-3d");
+const floorPlanButton = panel.querySelector("#scan-view-plan");
+const viewCaption = panel.querySelector("#scan-view-caption");
+const modelNote = panel.querySelector("#scan-model-note");
 let previewGrid = null;
 let scanViewMode = "3d";
 let roomEnvelope = null;
@@ -812,15 +824,22 @@ function initializeRenderer() {
 }
 
 function resizeRenderer() {
-  if (!renderer) return;
+  if (!renderer || !camera) return;
   const canvas = renderer.domElement;
   const width = Math.max(canvas.clientWidth, 1);
   const height = Math.max(canvas.clientHeight, 1);
   renderer.setSize(width, height, false);
-  camera.aspect = width / height;
+  const aspect = width / height;
+  if (camera.isOrthographicCamera) {
+    camera.left = -orthographicSpan * aspect / 2;
+    camera.right = orthographicSpan * aspect / 2;
+    camera.top = orthographicSpan / 2;
+    camera.bottom = -orthographicSpan / 2;
+  } else {
+    camera.aspect = aspect;
+  }
   camera.updateProjectionMatrix();
 }
-
 function clearModel() {
   while (modelGroup?.children.length) {
     const child = modelGroup.children[0];
@@ -833,158 +852,215 @@ function clearModel() {
   }
 }
 
+function quantile(values, fraction) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * fraction)));
+  return sorted[index];
+}
+
+function estimateRoomBounds() {
+  const samples = [];
+  (scan?.pointCloud || []).forEach(point => {
+    if (Array.isArray(point) && point.length >= 3) samples.push(new THREE.Vector3(point[0], point[1], point[2]));
+  });
+
+  (scan?.surfaces || []).forEach(surface => {
+    if (!surface.included || surface.role === "ignore") return;
+    const planeDepth = surface.alignment === "horizontal" ? surface.depth : surface.height;
+    if (!(surface.width > 0) || !(planeDepth > 0)) return;
+    const matrix = new THREE.Matrix4().fromArray(surface.transform);
+    const orientation = new THREE.Quaternion().setFromRotationMatrix(matrix);
+    if (surface.alignment === "horizontal") {
+      orientation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
+    }
+    const center = new THREE.Vector3(surface.center.x, surface.center.y, surface.center.z);
+    [-1, 1].forEach(xSign => [-1, 1].forEach(ySign => {
+      const corner = new THREE.Vector3(xSign * surface.width / 2, ySign * planeDepth / 2, 0)
+        .applyQuaternion(orientation).add(center);
+      samples.push(corner);
+    }));
+  });
+
+  if (!samples.length) {
+    (scan?.detectedObjects || []).forEach(item => {
+      if (!item.center || !item.dimensions) return;
+      const [x, y, z] = item.center;
+      const { width, height, depth } = item.dimensions;
+      [-1, 1].forEach(sx => [-1, 1].forEach(sy => [-1, 1].forEach(sz => {
+        samples.push(new THREE.Vector3(x + sx * width / 2, y + sy * height / 2, z + sz * depth / 2));
+      })));
+    });
+  }
+
+  if (!samples.length) {
+    return new THREE.Box3(new THREE.Vector3(-1.8, 0, -1.8), new THREE.Vector3(1.8, 2.6, 1.8));
+  }
+
+  const xs = samples.map(point => point.x);
+  const ys = samples.map(point => point.y);
+  const zs = samples.map(point => point.z);
+  let minX = quantile(xs, 0.02);
+  let maxX = quantile(xs, 0.98);
+  let minY = quantile(ys, 0.02);
+  let maxY = quantile(ys, 0.98);
+  let minZ = quantile(zs, 0.02);
+  let maxZ = quantile(zs, 0.98);
+
+  const floorCenters = (scan?.surfaces || [])
+    .filter(surface => surface.included && surface.role === "floor" && surface.alignment === "horizontal")
+    .map(surface => surface.center.y);
+  if (floorCenters.length) minY = Math.min(minY, ...floorCenters);
+
+  const expand = (min, max, minimumSize) => {
+    const center = (min + max) / 2;
+    const size = Math.max(max - min, minimumSize);
+    return [center - size / 2, center + size / 2];
+  };
+  [minX, maxX] = expand(minX, maxX, 2.2);
+  [minZ, maxZ] = expand(minZ, maxZ, 2.2);
+  if (maxY - minY < 2.2) maxY = minY + 2.6;
+  const padX = Math.max(0.08, (maxX - minX) * 0.035);
+  const padZ = Math.max(0.08, (maxZ - minZ) * 0.035);
+  return new THREE.Box3(
+    new THREE.Vector3(minX - padX, minY - 0.025, minZ - padZ),
+    new THREE.Vector3(maxX + padX, maxY + 0.05, maxZ + padZ)
+  );
+}
+
+function syncVisualizationButtons() {
+  const is3D = visualizationMode === "3d";
+  view3DButton.setAttribute("aria-pressed", String(is3D));
+  floorPlanButton.setAttribute("aria-pressed", String(!is3D));
+  view3DButton.className = is3D
+    ? "px-3 py-2 rounded-md bg-white shadow-sm text-[11px] font-semibold text-[#3f5f50]"
+    : "px-3 py-2 rounded-md text-[11px] font-semibold text-[#778279]";
+  floorPlanButton.className = !is3D
+    ? "px-3 py-2 rounded-md bg-white shadow-sm text-[11px] font-semibold text-[#3f5f50]"
+    : "px-3 py-2 rounded-md text-[11px] font-semibold text-[#778279]";
+  viewCaption.textContent = is3D ? "3D room envelope" : "Top-down floor plan";
+}
+
 function fitModelView() {
   if (!modelGroup || !camera || !controls) return;
-  const bounds = new THREE.Box3().setFromObject(modelGroup);
-  if (bounds.isEmpty()) {
-    controls.target.set(0, 1, 0);
-    camera.position.set(4, 3, 4);
-    controls.update();
-    return;
-  }
+  const bounds = roomBounds || new THREE.Box3().setFromObject(modelGroup);
+  if (bounds.isEmpty()) return;
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
-  const span = Math.max(size.x, size.y, size.z, 1);
+  const span = Math.max(size.x, size.z, size.y, 2.2);
   controls.target.copy(center);
-  camera.position.set(center.x + span * 1.7, center.y + span * 1.2, center.z + span * 1.7);
-  camera.near = Math.max(span / 100, 0.01);
-  camera.far = Math.max(span * 20, 100);
-  camera.updateProjectionMatrix();
+  if (visualizationMode === "plan") {
+    orthographicSpan = span * 1.18;
+    camera.up.set(0, 0, -1);
+    camera.position.set(center.x, bounds.max.y + span * 2.5, center.z);
+    camera.lookAt(center);
+    resizeRenderer();
+  } else {
+    const distance = span * 1.75;
+    camera.position.set(center.x + distance, center.y + span * 1.15, center.z + distance);
+    camera.near = Math.max(span / 500, 0.01);
+    camera.far = Math.max(span * 30, 100);
+    camera.updateProjectionMatrix();
+  }
   controls.update();
+}
+
+function setVisualizationMode(mode) {
+  if (mode !== "3d" && mode !== "plan") return;
+  visualizationMode = mode;
+  if (!renderer || !scene || !roomBounds) {
+    syncVisualizationButtons();
+    return;
+  }
+  controls?.dispose();
+  const canvas = renderer.domElement;
+  const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1);
+  if (mode === "plan") {
+    camera = new THREE.OrthographicCamera(-5 * aspect, 5 * aspect, 5, -5, 0.01, 1000);
+    camera.up.set(0, 0, -1);
+    controls = new OrbitControls(camera, canvas);
+    controls.enableRotate = false;
+  } else {
+    camera = new THREE.PerspectiveCamera(48, aspect, 0.01, 500);
+    controls = new OrbitControls(camera, canvas);
+    controls.maxPolarAngle = Math.PI * 0.49;
+  }
+  controls.enableDamping = true;
+  controls.enablePan = true;
+  controls.enableZoom = true;
+  fitModelView();
+  syncVisualizationButtons();
 }
 
 function updateModel(fit = false) {
   if (!scan) return;
   initializeRenderer();
   clearModel();
+  roomBounds = estimateRoomBounds();
+  const center = roomBounds.getCenter(new THREE.Vector3());
+  const size = roomBounds.getSize(new THREE.Vector3());
 
-  // Show one estimated room volume instead of every individual ARKit plane patch.
-  // The original plane observations remain available below for review and export.
-  roomEnvelope = buildRoomEnvelope(scan);
-  if (roomEnvelope) {
-    if (previewGrid) previewGrid.position.y = roomEnvelope.floorY;
-    const width = Math.max(roomEnvelope.width, 0.08);
-    const height = Math.max(roomEnvelope.height, 0.08);
-    const depth = Math.max(roomEnvelope.depth, 0.08);
-    const center = new THREE.Vector3(
-      (roomEnvelope.min.x + roomEnvelope.max.x) / 2,
-      (roomEnvelope.min.y + roomEnvelope.max.y) / 2,
-      (roomEnvelope.min.z + roomEnvelope.max.z) / 2
-    );
-    const roomGeometry = new THREE.BoxGeometry(width, height, depth);
-    const roomFill = new THREE.Mesh(
-      roomGeometry,
-      new THREE.MeshBasicMaterial({
-        color: 0x8fae98,
-        transparent: true,
-        opacity: 0.075,
-        side: THREE.DoubleSide,
-        depthWrite: false
-      })
-    );
-    roomFill.position.copy(center);
-    roomFill.name = "estimated-transparent-room-envelope";
-    modelGroup.add(roomFill);
+  // A single translucent room envelope replaces the distracting individual plane panels.
+  const shellGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+  const shell = new THREE.Mesh(shellGeometry, new THREE.MeshBasicMaterial({
+    color: 0xa9c4b2, transparent: true, opacity: 0.045, side: THREE.DoubleSide, depthWrite: false
+  }));
+  shell.position.copy(center);
+  modelGroup.add(shell);
+  const shellEdges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(shellGeometry),
+    new THREE.LineBasicMaterial({ color: 0x668875, transparent: true, opacity: 0.9 })
+  );
+  shellEdges.position.copy(center);
+  modelGroup.add(shellEdges);
 
-    const roomEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(roomGeometry),
-      new THREE.LineBasicMaterial({ color: 0x64816b, transparent: true, opacity: 0.9 })
-    );
-    roomEdges.position.copy(center);
-    modelGroup.add(roomEdges);
-
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, depth),
-      new THREE.MeshBasicMaterial({
-        color: 0xb9c9b9,
-        transparent: true,
-        opacity: 0.12,
-        side: THREE.DoubleSide,
-        depthWrite: false
-      })
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(center.x, roomEnvelope.floorY + 0.004, center.z);
-    modelGroup.add(floor);
-    scanModelCaption.textContent =
-      "Estimated room envelope · " + roomEnvelope.width.toFixed(1) + " × " +
-      roomEnvelope.depth.toFixed(1) + " × " + roomEnvelope.height.toFixed(1) + " m. " +
-      (roomEnvelope.assumedHeight ? "Height is illustrative because a full wall-to-ceiling extent was not detected. " : "") +
-      "This is a bounding volume from observed ARKit planes, not a complete reconstructed mesh.";
-  } else {
-    scanModelCaption.textContent =
-      "There is not enough floor-and-wall coverage to estimate a room volume yet. Continue scanning from more sides; the individual ARKit observations remain available below.";
-  }
-  scanViewFloorPlanButton.disabled = !roomEnvelope;
-  scanViewFloorPlanButton.title = roomEnvelope ? "Show top-down floor plan" : "More floor and wall coverage is needed first";
-  updateFloorPlan();
-  if (scanViewMode === "floorplan") setScanViewMode("floorplan");
-
-  // ARKit rawFeaturePoints are world-space visual landmarks collected on-device.
-  // Render them as a sparse point cloud; do not present them as a dense room mesh.
-  if (Array.isArray(scan.pointCloud) && scan.pointCloud.length) {
-    const positions = new Float32Array(scan.pointCloud.length * 3);
-    scan.pointCloud.forEach((point, index) => {
-      positions[index * 3] = point[0];
-      positions[index * 3 + 1] = point[1];
-      positions[index * 3 + 2] = point[2];
-    });
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({
-      color: 0x39765a,
-      size: 0.012,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.38
-    });
-    const cloud = new THREE.Points(geometry, material);
-    cloud.name = "on-device-arkit-feature-cloud";
-    modelGroup.add(cloud);
-  }
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(size.x, size.z),
+    new THREE.MeshBasicMaterial({ color: 0x9db7a5, transparent: true, opacity: 0.09, side: THREE.DoubleSide, depthWrite: false })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(center.x, roomBounds.min.y + 0.012, center.z);
+  modelGroup.add(floor);
+  const gridSize = Math.max(size.x, size.z);
+  const grid = new THREE.GridHelper(gridSize, Math.max(4, Math.min(32, Math.ceil(gridSize * 2))), 0xb7c4b8, 0xe0e6df);
+  grid.position.set(center.x, roomBounds.min.y + 0.02, center.z);
+  modelGroup.add(grid);
 
   const categoryColors = {
-    Table: 0xc89a58,
-    Chair: 0x668caa,
-    Sofa: 0x7b8f78,
-    Bed: 0x9b86ac,
-    Cabinet: 0x8a9698,
-    Object: 0x9b9b91,
-    Other: 0x9b9b91
+    Table: 0xc89a58, Chair: 0x668caa, Sofa: 0x7b8f78, Bed: 0x9b86ac,
+    Cabinet: 0x8a9698, Object: 0x9b9b91, Other: 0x9b9b91
   };
   (scan.detectedObjects || []).forEach(candidate => {
     const dims = candidate.dimensions;
-    const center = candidate.center;
-    if (!dims || !center) return;
+    const objectCenter = candidate.center;
+    if (!dims || !objectCenter) return;
     const geometry = new THREE.BoxGeometry(
-      Math.max(dims.width, 0.08),
-      Math.max(dims.height, 0.08),
-      Math.max(dims.depth, 0.08)
+      Math.max(dims.width, 0.08), Math.max(dims.height, 0.08), Math.max(dims.depth, 0.08)
     );
     const color = categoryColors[candidate.category] || categoryColors.Object;
-    const fill = new THREE.Mesh(
-      geometry,
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.12,
-        depthWrite: false
-      })
-    );
-    fill.position.set(center[0], center[1], center[2]);
+    const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.14, depthWrite: false
+    }));
+    fill.position.set(objectCenter[0], objectCenter[1], objectCenter[2]);
     modelGroup.add(fill);
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(geometry),
-      new THREE.LineBasicMaterial({ color })
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 })
     );
-    fill.add(edges);
+    edges.position.copy(fill.position);
+    modelGroup.add(edges);
   });
 
-  if (fit) fitModelView();
-  updateFloorPlan();
+  if (modelNote) {
+    modelNote.textContent = "Estimated envelope: " + size.x.toFixed(1) + "m × " + size.z.toFixed(1) + "m footprint, " +
+      size.y.toFixed(1) + "m high. Plane observations are retained in scan diagnostics; this is not a complete room mesh.";
+  }
+  if (fit) {
+    if (camera.isOrthographicCamera !== (visualizationMode === "plan")) setVisualizationMode(visualizationMode);
+    else fitModelView();
+  }
   updateExportState();
 }
-
 async function deliverFile(blob, filename) {
   const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
 
@@ -1079,7 +1155,7 @@ function showScan(scanPayload) {
   renderCapturedFrames();
   renderDetectedObjects();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
-  planeDetails.open = scan.surfaces.length > 0 || scan.pointCloud.length > 0;
+  planeDetails.open = false;
   panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
   if (scan.surfaces.length) renderSurfaceList();
   else surfaceList.replaceChildren();
@@ -1110,6 +1186,8 @@ async function startScan() {
 startButton.addEventListener("click", startScan);
 panel.querySelector("#scan-rescan").addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
+view3DButton.addEventListener("click", () => setVisualizationMode("3d"));
+floorPlanButton.addEventListener("click", () => setVisualizationMode("plan"));
 scanView3DButton.addEventListener("click", () => setScanViewMode("3d"));
 scanViewFloorPlanButton.addEventListener("click", () => setScanViewMode("floorplan"));
 exportButton.addEventListener("click", downloadJSON);
