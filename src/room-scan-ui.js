@@ -201,6 +201,7 @@ let controls = null;
 let modelGroup = null;
 let animationStarted = false;
 let resizeObserver = null;
+let previewGrid = null;
 let scanViewMode = "3d";
 let roomEnvelope = null;
 
@@ -789,7 +790,8 @@ function initializeRenderer() {
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
   keyLight.position.set(4, 8, 5);
   scene.add(keyLight);
-  scene.add(new THREE.GridHelper(10, 20, 0xaab5aa, 0xdce2da));
+  previewGrid = new THREE.GridHelper(10, 20, 0xaab5aa, 0xdce2da);
+  scene.add(previewGrid);
   modelGroup = new THREE.Group();
   scene.add(modelGroup);
   controls = new OrbitControls(camera, renderer.domElement);
@@ -860,6 +862,7 @@ function updateModel(fit = false) {
   // The original plane observations remain available below for review and export.
   roomEnvelope = buildRoomEnvelope(scan);
   if (roomEnvelope) {
+    if (previewGrid) previewGrid.position.y = roomEnvelope.floorY;
     const width = Math.max(roomEnvelope.width, 0.08);
     const height = Math.max(roomEnvelope.height, 0.08);
     const depth = Math.max(roomEnvelope.depth, 0.08);
