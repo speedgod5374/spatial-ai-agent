@@ -30,9 +30,9 @@ Apple references:
 7. Accepted views are grouped into eight relative horizontal heading buckets. This reports directional variety only, not room coverage.
 8. Horizontal and vertical ARKit plane anchors are collected as optional hints; they are not treated as a room mesh.
 9. The plugin returns the JPEG data and metadata to the web app. The review UI displays sample frames and exports a ZIP containing the images plus `capture.json`.
-8. The user can separately review and export optional, manually confirmed plane hints. The actual 3D reconstruction is a later server-side step.
+9. The user can separately review and export optional, manually confirmed plane hints. The scan review screen can also send the ZIP to a user-configured GPU worker and display the returned GLB point-cloud preview.
 
-No account, database, remote image upload, furniture recognition, or product service is used by this feature.
+No account, database, furniture recognition, or product service is used by this feature. Remote image processing is opt-in: the scan is sent only after the user configures a worker and taps **Reconstruct 3D preview**.
 
 ## Web development and tests
 
@@ -69,6 +69,8 @@ Run `npm run cap:add:ios` only once, when the `ios/` platform does not already e
 5. In the App target's Info settings, add the `NSCameraUsageDescription` key. Use the wording in `native/ios/InfoPlist-additions.txt`.
 6. Set the iOS deployment target to a version supported by the installed Capacitor 8 toolchain and ARKit SDK.
 7. Select a physical standard iPhone 17 as the run destination. The app checks `ARWorldTrackingConfiguration.isSupported` at runtime; the simulator is not a substitute for room-scanning tests.
+
+Before using reconstruction from the installed app, add `NSLocalNetworkUsageDescription` and `NSAppTransportSecurity` → `NSAllowsLocalNetworking = YES` to the App target's Info.plist. The exact values are listed in `native/ios/InfoPlist-additions.txt`. Run the worker on the GPU computer with `--host 0.0.0.0`, keep the phone and computer on the same Wi-Fi, and enter the computer's LAN address and worker API key under **Connect reconstruction worker** in the scan review screen. The app sends images only after the user taps **Reconstruct 3D preview**.
 
 After changing web assets or Swift sources, update the Swift file that is included in the Xcode target, then rebuild the web assets and sync Capacitor:
 
