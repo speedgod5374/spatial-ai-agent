@@ -882,6 +882,7 @@ function showScan(scanPayload) {
   renderCapturedFrames();
   renderDetectedObjects();
   planeDetails.classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
+  planeDetails.open = scan.surfaces.length > 0 || scan.pointCloud.length > 0;
   panel.querySelector("#scan-fit-view").classList.toggle("hidden", scan.surfaces.length === 0 && scan.pointCloud.length === 0);
   if (scan.surfaces.length) renderSurfaceList();
   else surfaceList.replaceChildren();
