@@ -75,6 +75,29 @@ Configuration variables:
 - `MAX_UNCOMPRESSED_BYTES`: default 70 MiB.
 - `MAX_FRAMES`: default 32.
 
+## Capture quality diagnostics
+
+Before model inference, the worker measures the uploaded camera trajectory from the ARKit camera-to-world transforms. The response includes these headers:
+
+- `X-Camera-Path-Length-M`: total distance traveled between consecutive captured poses.
+- `X-Camera-Span-X-M` and `X-Camera-Span-Z-M`: horizontal spread of the camera positions in ARKit world coordinates.
+- `X-Scan-Quality-Warnings`: JSON array containing warnings for near-stationary captures, little horizontal spread, repeated positions, or large gaps between consecutive views.
+
+These are **capture-path diagnostics, not a room-coverage score**. A large path does not prove that every wall was seen, and a small path may be reasonable for a small space. Warnings do not currently block reconstruction. The next stage should combine image visibility/overlap, tracking confidence, and depth consistency before deciding whether to accept or reject a scan.
+
+## Reconstruction research notes
+
+The current DA3 call is pose-conditioned: it supplies the ARKit-derived camera extrinsics and intrinsics. DA3 documents that `align_to_input_ext_scale=True` replaces predicted extrinsics with the supplied inputs and aligns depth scale to them. This means camera tracking errors can affect the output; the worker does not currently optimize or correct those poses.
+
+A useful controlled benchmark is to compare:
+1. DA3 with ARKit poses (current baseline).
+2. DA3 with its own internally estimated poses.
+3. VGGT predictions, optionally followed by bundle adjustment and export to COLMAP.
+
+VGGT is relevant because its released pipeline predicts camera parameters, depth, point maps, and tracks, and its repository includes COLMAP export and optional bundle adjustment. However, checkpoint licensing must be checked before commercial use: the repository distinguishes its original non-commercial checkpoint from its commercial-use checkpoint. Do not assume all downloadable VGGT weights have the same license.
+
+Only after camera/depth alignment is stable should depth maps be fused into a surface. Open3D's TSDF integration is designed to combine noisy depth images with known camera poses and smooth the resulting geometry. It is a later fusion stage, not a substitute for good camera calibration or pose alignment.
+
 ## Pose convention
 
 ARKit frame metadata stores a column-major 4×4 camera-to-world transform. ARKit camera coordinates use +X right, +Y up, and -Z forward. DA3 documents input extrinsics as world-to-camera; the worker converts the pose to OpenCV camera coordinates (+X right, +Y down, +Z forward) before passing it to DA3. Intrinsics are scaled to the exact sensor-native JPEG size and are passed as a 3×3 matrix.
