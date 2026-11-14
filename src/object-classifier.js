@@ -22,17 +22,17 @@ function classifyDimensions(width, depth, height) {
   if (height >= 0.22 && height <= 0.9 && major >= 1.45 && minor >= 0.72) {
     return { category: "Bed", confidence: 0.52 };
   }
-  if (height >= 0.5 && height <= 1.25 && major >= 1.15 && major <= 3.0 &&
+  if (height >= 0.5 && height <= 1.25 && major >= 1.2 && major <= 3.0 &&
       minor >= 0.48 && minor <= 1.45 && ratio <= 3.8) {
     return { category: "Sofa", confidence: 0.48 };
   }
-  if (height >= 0.55 && height <= 1.15 && major >= 0.62 &&
+  if (height >= 0.62 && height <= 1.45 && major >= 0.28 &&
+      major <= 0.95 && minor >= 0.25 && minor <= 0.9) {
+    return { category: "Chair", confidence: 0.42 };
+  }
+  if (height >= 0.45 && height <= 1.15 && major >= 0.9 &&
       major <= 2.4 && minor >= 0.34 && minor <= 1.35 && ratio <= 3.4) {
     return { category: "Table", confidence: 0.46 };
-  }
-  if (height >= 0.62 && height <= 1.45 && major >= 0.28 &&
-      major <= 1.05 && minor >= 0.25 && minor <= 1.0) {
-    return { category: "Chair", confidence: 0.42 };
   }
   if (height >= 0.85 && height <= 2.45 && major >= 0.32 &&
       major <= 1.8 && minor >= 0.22 && minor <= 1.15) {
