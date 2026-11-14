@@ -59,12 +59,12 @@ let dragging = false;
 let dragOffset = new THREE.Vector3();
 
 const catalog = [
-  { type: 'sofa', name: 'Two-seat sofa', w: 1.9, d: 0.85, h: 0.82, color: 0x8c9baa, price: 399 },
-  { type: 'desk', name: 'Work desk', w: 1.4, d: 0.7, h: 0.75, color: 0xb38a62, price: 179 },
-  { type: 'bed', name: 'Double bed', w: 1.9, d: 1.4, h: 0.55, color: 0x9cabc0, price: 499 },
-  { type: 'chair', name: 'Accent chair', w: 0.75, d: 0.75, h: 0.85, color: 0xc69b78, price: 129 },
-  { type: 'table', name: 'Coffee table', w: 1.0, d: 0.6, h: 0.42, color: 0x9b7959, price: 89 },
-  { type: 'lamp', name: 'Floor lamp', w: 0.35, d: 0.35, h: 1.55, color: 0x343a40, price: 59 }
+  { type: 'sofa', category: 'Seating', name: 'Two-seat sofa', w: 1.9, d: 0.85, h: 0.82, color: 0x8c9baa, price: 399 },
+  { type: 'desk', category: 'Work', name: 'Work desk', w: 1.4, d: 0.7, h: 0.75, color: 0xb38a62, price: 179 },
+  { type: 'bed', category: 'Bedroom', name: 'Double bed', w: 1.9, d: 1.4, h: 0.55, color: 0x9cabc0, price: 499 },
+  { type: 'chair', category: 'Seating', name: 'Accent chair', w: 0.75, d: 0.75, h: 0.85, color: 0xc69b78, price: 129 },
+  { type: 'table', category: 'Tables', name: 'Coffee table', w: 1.0, d: 0.6, h: 0.42, color: 0x9b7959, price: 89 },
+  { type: 'lamp', category: 'Lighting', name: 'Floor lamp', w: 0.35, d: 0.35, h: 1.55, color: 0x343a40, price: 59 }
 ];
 
 function resizeRenderer() {
@@ -184,9 +184,13 @@ function updateSelection() {
     if (outline) outline.visible = group.userData.itemId === state.selectedId;
   });
   const selected = state.furniture.find(item => item.id === state.selectedId);
-  $('selection-name').textContent = selected ? selected.name : 'Nothing selected';
+  $('selection-name').textContent = selected ? selected.name : 'Select an item in the room';
   $('rotate-button').disabled = !selected;
   $('remove-button').disabled = !selected;
+  $('apply-item-size').disabled = !selected;
+  $('selected-width').disabled = !selected;
+  $('selected-depth').disabled = !selected;
+  if (selected) { $('selected-width').value = selected.w.toFixed(2); $('selected-depth').value = selected.d.toFixed(2); }
 }
 
 function selectFurniture(id) {
@@ -244,23 +248,26 @@ function buildPanels() {
   layout.className = 'tab-panel hidden space-y-4';
   layout.innerHTML = `
     <div class="material-card p-4 space-y-3">
-      <h2 class="text-sm font-semibold">Room dimensions</h2>
-      <p class="text-xs text-[#5f6368]">Enter approximate measurements in meters. This creates a scaled planning model, not an automatic scan.</p>
+      <div class="flex items-center justify-between"><h2 class="text-sm font-semibold">Room size</h2><span class="text-[10px] text-[#7a847d]">METERS</span></div>
       <div class="grid grid-cols-3 gap-2">
         <label class="text-xs">Width (m)<input id="room-width" type="number" min="1" max="30" step="0.1" value="4.5" class="mt-1 w-full border rounded-lg p-2"></label>
         <label class="text-xs">Length (m)<input id="room-length" type="number" min="1" max="30" step="0.1" value="5.2" class="mt-1 w-full border rounded-lg p-2"></label>
         <label class="text-xs">Height (m)<input id="room-height" type="number" min="1.8" max="8" step="0.1" value="2.8" class="mt-1 w-full border rounded-lg p-2"></label>
       </div>
-      <button id="build-room-button" class="w-full bg-[#1a73e8] text-white rounded-full p-3 text-xs font-semibold">Build 3D room</button>
+      <button id="build-room-button" class="w-full bg-[#3f5f50] text-white rounded-lg p-3 text-xs font-semibold">Update room</button>
     </div>
     <div class="material-card p-4 space-y-3">
-      <h2 class="text-sm font-semibold">Selected furniture</h2>
-      <p id="selection-name" class="text-xs text-[#5f6368]">Nothing selected</p>
+      <div class="flex items-center justify-between"><h2 class="text-sm font-semibold">Furniture</h2><span class="text-[10px] text-[#7a847d]">SELECT TO EDIT</span></div>
+      <p id="selection-name" class="text-xs text-[#7b857e]">Select an item in the room</p>
       <div class="grid grid-cols-2 gap-2">
-        <button id="rotate-button" class="border rounded-full p-3 text-xs" disabled>Rotate 15°</button>
-        <button id="remove-button" class="border rounded-full p-3 text-xs" disabled>Remove item</button>
+        <label class="text-[11px] text-[#7a847d]">Width (m)<input id="selected-width" type="number" min="0.1" max="10" step="0.05" class="mt-1 w-full p-2 text-xs" disabled></label>
+        <label class="text-[11px] text-[#7a847d]">Depth (m)<input id="selected-depth" type="number" min="0.1" max="10" step="0.05" class="mt-1 w-full p-2 text-xs" disabled></label>
       </div>
-      <p class="text-[11px] text-[#5f6368]">Tip: select an item, then drag it across the floor in the 3D viewer.</p>
+      <button id="apply-item-size" class="w-full bg-[#3f5f50] text-white rounded-lg p-2.5 text-xs font-semibold" disabled>Apply size</button>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="rotate-button" class="border border-[#dfe5de] rounded-lg p-3 text-xs" disabled>Rotate 15°</button>
+        <button id="remove-button" class="border border-[#dfe5de] rounded-lg p-3 text-xs text-[#a14d45]" disabled>Remove</button>
+      </div>
     </div>
     <div class="material-card p-4 space-y-2">
       <div class="flex justify-between"><h2 class="text-sm font-semibold">Room objects</h2><span id="layout-count" class="text-xs text-[#5f6368]">0 items</span></div>
@@ -272,11 +279,18 @@ function buildPanels() {
   store.id = 'tab-store';
   store.className = 'tab-panel hidden space-y-4';
   store.innerHTML = `
-    <div class="material-card p-4 space-y-2">
-      <h2 class="text-sm font-semibold">Furniture catalog</h2>
-      <p class="text-xs text-[#5f6368]">Sample planning objects. These are not live retail listings or purchasable products yet.</p>
+    <div class="flex items-center justify-between gap-3"><div><h2 class="text-base font-semibold">Furniture</h2><p class="text-[11px] text-[#7a847d] mt-1">Add pieces to your room plan.</p></div><span class="text-[10px] text-[#7a847d] bg-white border border-[#e7ebe6] px-2.5 py-1.5 rounded-md">6 pieces</span></div>
+    <input id="catalog-search" type="search" placeholder="Search furniture..." aria-label="Search furniture" class="w-full bg-white p-3 text-xs">
+    <div id="catalog-categories" class="flex gap-2 overflow-x-auto pb-1">
+      <button type="button" data-category="All" aria-pressed="true" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-[#3f5f50] text-white">All</button>
+      <button type="button" data-category="Seating" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-white border border-[#e7ebe6] text-[#68746b]">Seating</button>
+      <button type="button" data-category="Bedroom" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-white border border-[#e7ebe6] text-[#68746b]">Bedroom</button>
+      <button type="button" data-category="Work" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-white border border-[#e7ebe6] text-[#68746b]">Work</button>
+      <button type="button" data-category="Tables" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-white border border-[#e7ebe6] text-[#68746b]">Tables</button>
+      <button type="button" data-category="Lighting" class="catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold bg-white border border-[#e7ebe6] text-[#68746b]">Lighting</button>
     </div>
-    <div id="store-grid" class="grid grid-cols-2 gap-3"></div>`;
+    <div id="store-grid" class="grid grid-cols-2 gap-3"></div>
+    <p class="text-[10px] text-[#8a948c]">Concept pieces with sample prices, not live store listings.</p>`;
   dashboard.appendChild(store);
 
   const nav = $('bottom-nav');
@@ -335,15 +349,262 @@ function buildPanels() {
     state.selectedId = null;
     renderFurniture();
   });
-  $('store-grid').innerHTML = catalog.map((item, index) => `
-    <article class="material-card p-3 space-y-2">
-      <div class="h-20 rounded-xl flex items-center justify-center" style="background:#f1f3f4"><div class="rounded-lg shadow-sm" style="width:50px;height:34px;background:#${item.color.toString(16).padStart(6,'0')}"></div></div>
-      <h3 class="text-xs font-semibold">${item.name}</h3>
-      <p class="text-[11px] text-[#5f6368]">${item.w} × ${item.d} × ${item.h}m</p>
-      <p class="text-xs font-medium">Sample price: $${item.price}</p>
-      <button type="button" data-add-index="${index}" class="w-full bg-[#1a73e8] text-white rounded-full py-2 text-xs">Add to room</button>
-    </article>`).join('');
-  $('store-grid').querySelectorAll('[data-add-index]').forEach(button => button.addEventListener('click', () => addFurniture(catalog[Number(button.dataset.addIndex)])));
+  let activeCategory = 'All';
+  function renderCatalog() {
+    const query = $('catalog-search').value.trim().toLowerCase();
+    const filtered = catalog.filter(item => (activeCategory === 'All' || item.category === activeCategory) && item.name.toLowerCase().includes(query));
+    const grid = $('store-grid');
+    grid.replaceChildren();
+    if (!filtered.length) {
+      const empty = document.createElement('p');
+      empty.className = 'col-span-full text-xs text-[#7a847d] py-8 text-center';
+      empty.textContent = 'No matching furniture.';
+      grid.append(empty);
+      return;
+    }
+    filtered.forEach(item => {
+      const card = document.createElement('article');
+      card.className = 'material-card overflow-hidden';
+      const art = document.createElement('div');
+      art.className = 'h-28 flex items-center justify-center';
+      art.style.background = '#f0f3ef';
+      const shape = document.createElement('div');
+      shape.style.cssText = 'width:' + Math.max(28,Math.min(76,item.w*35)) + 'px;height:' + Math.max(22,Math.min(54,item.h*36)) + 'px;background:#' + item.color.toString(16).padStart(6,'0') + ';border-radius:7px;box-shadow:0 8px 16px rgba(31,45,36,.12)';
+      art.append(shape);
+      const details = document.createElement('div');
+      details.className = 'p-3 space-y-2';
+      const category = document.createElement('p');
+      category.className = 'text-[9px] uppercase tracking-wider font-semibold text-[#7a847d]';
+      category.textContent = item.category;
+      const title = document.createElement('h3');
+      title.className = 'text-xs font-semibold';
+      title.textContent = item.name;
+      const size = document.createElement('p');
+      size.className = 'text-[10px] text-[#7a847d]';
+      size.textContent = item.w + ' × ' + item.d + ' × ' + item.h + ' m';
+      const footer = document.createElement('div');
+      footer.className = 'flex items-center justify-between gap-2 pt-1';
+      const price = document.createElement('span');
+      price.className = 'text-xs font-semibold';
+      price.textContent = '
+}
+
+function pickFurniture(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(furnitureGroup.children, true);
+  if (!hits.length) return null;
+  let target = hits[0].object;
+  while (target.parent && !target.userData.itemId) target = target.parent;
+  return target.userData.itemId ? target : null;
+}
+renderer.domElement.addEventListener('pointerdown', event => {
+  const target = pickFurniture(event);
+  if (!target) return;
+  selectFurniture(target.userData.itemId);
+  controls.enabled = false;
+  dragging = true;
+  raycaster.setFromCamera(pointer, camera);
+  raycaster.ray.intersectPlane(floorPlane, dragPoint);
+  dragOffset.set(target.position.x - dragPoint.x, 0, target.position.z - dragPoint.z);
+  renderer.domElement.setPointerCapture(event.pointerId);
+});
+renderer.domElement.addEventListener('pointermove', event => {
+  if (!dragging) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  if (!raycaster.ray.intersectPlane(floorPlane, dragPoint)) return;
+  const item = state.furniture.find(x => x.id === state.selectedId);
+  if (!item) return;
+  const position = clampFurniturePosition(item, dragPoint.x + dragOffset.x, dragPoint.z + dragOffset.z, state.room);
+  if (!position || furnitureOverlaps(item, position, state.furniture)) return;
+  item.x = position.x;
+  item.z = position.z;
+  const group = furnitureGroup.children.find(g => g.userData.itemId === item.id);
+  if (group) group.position.set(position.x, 0, position.z);
+});
+function stopDrag() {
+  if (!dragging) return;
+  dragging = false;
+  controls.enabled = true;
+  renderFurnitureList();
+}
+renderer.domElement.addEventListener('pointerup', stopDrag);
+renderer.domElement.addEventListener('pointercancel', stopDrag);
+
+$('scan-button').addEventListener('click', async () => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    notice('Camera access is unavailable in this browser. Open the HTTPS site in Safari.');
+    return;
+  }
+  try {
+    state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    let overlay = $('camera-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'camera-overlay';
+      overlay.className = 'fixed inset-0 z-50 bg-black flex flex-col';
+      overlay.innerHTML = '<video id="camera-video" autoplay playsinline class="w-full h-full object-cover"></video><div class="absolute top-4 left-4 right-4 flex justify-between items-center"><span class="bg-black/60 text-white text-xs px-3 py-2 rounded-full">Camera preview · not a 3D scan</span><button id="close-camera" class="bg-white text-black px-4 py-2 rounded-full text-xs">Close</button></div>';
+      document.body.appendChild(overlay);
+      $('close-camera').addEventListener('click', closeCamera);
+    }
+    $('camera-video').srcObject = state.cameraStream;
+    $('system-status-text').textContent = 'Camera active';
+  } catch (error) {
+    const messages = { NotAllowedError: 'Camera permission was denied. Allow camera access for this website in Safari settings.', NotFoundError: 'No camera was found on this device.', NotReadableError: 'The camera is already being used by another app.' };
+    notice(messages[error.name] || 'Could not open the camera. Check Safari permissions and try again.');
+  }
+});
+function closeCamera() {
+  state.cameraStream?.getTracks().forEach(track => track.stop());
+  state.cameraStream = null;
+  $('camera-overlay')?.remove();
+  $('system-status-text').textContent = 'Ready';
+}
+window.addEventListener('pagehide', closeCamera);
+
+$('import-button').addEventListener('click', () => $('import-input').click());
+$('import-input').addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const room = parsed.room || parsed;
+    const dims = room.dimensions || room;
+    if (Number.isFinite(dims.width) && Number.isFinite(dims.length)) {
+      state.room.width = dims.width;
+      state.room.length = dims.length;
+      state.room.height = dims.height || state.room.height;
+      buildRoom();
+    }
+    const importedItems = parsed.furniture || room.furniture || room.elements || parsed.elements || [];
+    state.furniture = [];
+    importedItems.forEach(el => {
+      const dimensions = el.dimensions || el.size || [];
+      const item = {
+        id: crypto.randomUUID(),
+        name: el.name || el.category || el.label || 'Scanned object',
+        type: el.type || el.category || 'scanned',
+        w: Number(el.w ?? el.width ?? dimensions.width ?? dimensions[0] ?? 1),
+        h: Number(el.h ?? el.height ?? dimensions.height ?? dimensions[1] ?? 0.8),
+        d: Number(el.d ?? el.depth ?? dimensions.depth ?? dimensions[2] ?? 0.8),
+        x: Number(el.x ?? el.position?.x ?? 0),
+        z: Number(el.z ?? el.position?.z ?? 0),
+        rotation: Number(el.rotation ?? 0),
+        color: Number(el.color ?? 0x8c9baa),
+        price: Number(el.price ?? 0)
+      };
+      if (![item.w, item.h, item.d, item.x, item.z, item.rotation].every(Number.isFinite) ||
+          item.w <= 0 || item.h <= 0 || item.d <= 0) return;
+      const position = findFurniturePlacement(item, state.room, state.furniture, { x: item.x, z: item.z });
+      if (position) {
+        Object.assign(item, position);
+        state.furniture.push(item);
+      }
+    });
+    state.selectedId = null;
+    renderFurniture();
+    $('detected-space-name').textContent = 'Imported room data';
+    $('confidence-label').textContent = 'Imported file';
+    $('scan-message').textContent = 'Imported geometry is a planning representation. Review dimensions before relying on fit.';
+    setTab('viewer');
+    notice('Room data imported.');
+  } catch {
+    notice('That file is not valid Spatial Studio room JSON.');
+  }
+  event.target.value = '';
+});
+$('export-button').addEventListener('click', () => {
+  const payload = {
+    schemaVersion: 2,
+    source: 'Spatial Studio',
+    room: { ...state.room },
+    furniture: state.furniture.map(item => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      w: item.w,
+      h: item.h,
+      d: item.d,
+      x: item.x,
+      z: item.z,
+      rotation: item.rotation || 0,
+      color: item.color,
+      price: item.price || 0,
+      footprint: getFurnitureFootprint(item)
+    }))
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'spatial-studio-room.json';
+  a.style.display = 'none';
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+});
+
+buildPanels();
+buildRoom();
+renderFurniture();
+setTab('viewer');
+$('system-status-text').textContent = 'Ready';
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+ + item.price;
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'bg-[#3f5f50] text-white rounded-lg px-3 py-2 text-[10px] font-semibold';
+      add.textContent = 'Add +';
+      add.addEventListener('click', () => addFurniture(item));
+      footer.append(price,add);
+      details.append(category,title,size,footer);
+      card.append(art,details);
+      grid.append(card);
+    });
+  }
+  $('catalog-search').addEventListener('input',renderCatalog);
+  $('catalog-categories').querySelectorAll('[data-category]').forEach(button => button.addEventListener('click',() => {
+    activeCategory = button.dataset.category;
+    $('catalog-categories').querySelectorAll('[data-category]').forEach(filter => {
+      const active = filter === button;
+      filter.className = 'catalog-filter shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold ' + (active ? 'bg-[#3f5f50] text-white' : 'bg-white border border-[#e7ebe6] text-[#68746b]');
+      filter.setAttribute('aria-pressed',String(active));
+    });
+    renderCatalog();
+  }));
+  renderCatalog();
+  $('apply-item-size').addEventListener('click',() => {
+    const item = state.furniture.find(x => x.id === state.selectedId);
+    if (!item) return;
+    const width = Number($('selected-width').value);
+    const depth = Number($('selected-depth').value);
+    if (![width,depth].every(Number.isFinite) || width < 0.1 || depth < 0.1 || width > 10 || depth > 10) {
+      notice('Enter a width and depth between 0.1m and 10m.');
+      return;
+    }
+    const resized = { ...item,w:width,d:depth };
+    const position = clampFurniturePosition(resized,item.x,item.z,state.room);
+    if (!position || furnitureOverlaps(resized,position,state.furniture)) {
+      notice('That size does not fit without overlapping another item.');
+      return;
+    }
+    item.w = width;
+    item.d = depth;
+    Object.assign(item,position);
+    renderFurniture();
+    notice('Furniture size updated.');
+  });
 }
 
 function pickFurniture(event) {
