@@ -158,6 +158,55 @@ panel.append(reconstructionPanel);
 
 viewer.prepend(panel);
 
+const dashboard = document.querySelector("#app-shell .dashboard");
+if (!dashboard) throw new Error("Spatial Studio dashboard is unavailable.");
+
+const arTab = document.createElement("section");
+arTab.id = "tab-ar";
+arTab.className = "tab-panel hidden space-y-4";
+arTab.innerHTML = `
+  <section class="material-card p-4 sm:p-5 space-y-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">RoomAlign · AR</div>
+        <h2 class="text-lg font-semibold mt-1">Scan your space</h2>
+        <p class="text-xs leading-relaxed text-[#778279] mt-1">Use the iPhone camera and ARKit to capture viewpoints around your room.</p>
+      </div>
+      <span class="shrink-0 rounded-full bg-[#f1f3f4] text-[#5f6368] px-3 py-1.5 text-[10px]" id="ar-availability-text">Checking device…</span>
+    </div>
+    <div class="rounded-xl border border-[#e5eae3] bg-[#f7f8f6] p-4 space-y-3">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-[#eaf0eb] text-[#3f5f50] grid place-items-center text-lg" aria-hidden="true">⌖</div>
+        <div>
+          <div class="text-sm font-semibold text-[#344139]">Room scanner</div>
+          <p class="text-[11px] text-[#7a857d]">Native iOS camera capture</p>
+        </div>
+      </div>
+      <button id="ar-launch-scan" type="button" class="w-full min-h-[48px] rounded-lg bg-[#3f5f50] px-4 py-3 text-sm font-semibold text-white">Start AR scan <span aria-hidden="true">↗</span></button>
+      <p class="text-[11px] leading-relaxed text-[#7a857d]" id="ar-scan-help">The scanner opens in the installed iPhone app. A regular browser cannot access the native ARKit scanner.</p>
+    </div>
+  </section>
+  <section class="material-card p-4 space-y-3">
+    <div class="text-[10px] uppercase tracking-wider font-semibold text-[#547565]">How it works</div>
+    <div class="grid gap-3 sm:grid-cols-3">
+      <div class="rounded-lg bg-[#f7f8f6] p-3">
+        <div class="text-xs font-semibold text-[#344139]">01 · Move around</div>
+        <p class="text-[11px] text-[#7a857d] mt-1">Walk slowly and point the camera at different parts of the room.</p>
+      </div>
+      <div class="rounded-lg bg-[#f7f8f6] p-3">
+        <div class="text-xs font-semibold text-[#344139]">02 · Capture views</div>
+        <p class="text-[11px] text-[#7a857d] mt-1">ARKit records camera viewpoints and optional flat-surface hints.</p>
+      </div>
+      <div class="rounded-lg bg-[#f7f8f6] p-3">
+        <div class="text-xs font-semibold text-[#344139]">03 · Review</div>
+        <p class="text-[11px] text-[#7a857d] mt-1">Review the scan, inspect possible object shapes, and export the capture.</p>
+      </div>
+    </div>
+  </section>
+  <p class="px-1 text-[10px] leading-relaxed text-[#89938b]">Device note: the standard iPhone 17 uses camera-based ARKit tracking and does not have LiDAR. The scan is a set of camera views and approximate surface hints, not a complete room mesh.</p>
+`;
+dashboard.appendChild(arTab);
+
 const status = panel.querySelector("#scan-status");
 const availabilityBadge = panel.querySelector("#scan-availability");
 const review = panel.querySelector("#scan-review");
@@ -1183,6 +1232,12 @@ async function startScan() {
   }
 }
 
+const arLaunchButton = arTab.querySelector("#ar-launch-scan");
+arLaunchButton.addEventListener("click", () => {
+  document.querySelector('[data-tab="viewer"]')?.click();
+  requestAnimationFrame(() => startButton.click());
+});
+
 startButton.addEventListener("click", startScan);
 panel.querySelector("#scan-rescan").addEventListener("click", startScan);
 panel.querySelector("#scan-fit-view").addEventListener("click", () => fitModelView());
@@ -1207,11 +1262,17 @@ reconstructionRunButton.addEventListener("click", reconstructCapturedRoom);
 
 async function checkAvailability() {
   const result = await isNativeARKitAvailable();
+  const arAvailabilityText = arTab.querySelector("#ar-availability-text");
   if (result.available) {
+    arAvailabilityText.textContent = "Native iOS ready";
+    arAvailabilityText.className = "shrink-0 rounded-full bg-[#edf4ed] text-[#477151] px-3 py-1.5 text-[10px]";
     availabilityBadge.textContent = "Native ARKit ready";
     availabilityBadge.className = "text-[10px] rounded-full px-3 py-1.5 bg-[#edf4ed] text-[#477151]";
     setStatus("Ready. Start a scan in the installed iOS app.");
   } else {
+    arAvailabilityText.textContent = "iOS app required";
+    arAvailabilityText.className = "shrink-0 rounded-full bg-[#f8f2e8] text-[#9a743c] px-3 py-1.5 text-[10px]";
+    arTab.querySelector("#ar-scan-help").textContent = result.reason;
     availabilityBadge.textContent = "iOS app required";
     availabilityBadge.className = "text-[10px] rounded-full px-3 py-1.5 bg-[#f8f2e8] text-[#9a743c]";
     setStatus(result.reason);
