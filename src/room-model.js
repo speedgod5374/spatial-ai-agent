@@ -138,7 +138,7 @@ export function createRoomModelExport(scan) {
     units: "meters",
     capturedAt: scan?.capturedAt || new Date().toISOString(),
     tracking: scan?.tracking || "unknown",
-    accuracyNote: "These are optional camera-based plane observations, not a reconstructed room mesh, complete floor plan, or certified measurement. Confirm and correct every surface before relying on it.",
+    accuracyNote: "This export contains sparse ARKit visual landmarks, approximate plane observations, and dimensions-based furniture shape suggestions. Object labels and bounding boxes are rough candidates, not verified object recognition or a complete room reconstruction. Review and correct all dimensions before relying on them.",
     observations: surfaces.map(serialize),
     pointCloud: Array.isArray(scan?.pointCloud) ? scan.pointCloud : [],
     pointCloudType: scan?.pointCloudType || "none",
