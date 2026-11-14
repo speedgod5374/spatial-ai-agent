@@ -47,11 +47,11 @@ Do not assume the first predicted mesh is dimensionally correct. Camera-only mon
 ## Reconstruction worker status
 
 - A first FastAPI worker implementation now exists at [services/reconstruction-worker](../services/reconstruction-worker/README.md). It validates a capture ZIP, converts camera poses, calls DA3-LARGE-1.1, and exports a GLB point-cloud preview.
-- The worker is not deployed, and no CUDA inference host or reconstruction API URL is connected to the iOS app.
+- The scan review screen now supports an explicit worker URL/API-key connection, health check, ZIP upload, and GLB point-cloud viewer. The worker is still not deployed or running by default; a GPU host must be started and configured by the user.
 - The DA3 call and pose-convention conversion have not yet been verified against a physical iPhone capture. The GLB preview is not an editable floor plan or architectural mesh.
 - No finished room mesh or editable floor plan is generated inside the app yet.
 - No furniture recognition is currently part of the capture pipeline.
-- The client does not upload images automatically. A future upload must be an explicit user action with a clear privacy notice and a secure backend.
+- The client does not upload images automatically. Upload occurs only after the user configures a worker and taps **Reconstruct 3D preview**. The API key is held in the current app session and is not persisted. A production release still needs an authenticated backend with per-user access and short-lived permissions.
 
 ## Physical-device test checklist
 
